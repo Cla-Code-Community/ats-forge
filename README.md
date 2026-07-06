@@ -1,94 +1,96 @@
-# ATS CV Generator
+# Gerador de Currículos ATS
 
-> **Template** — Generate ATS-friendly resumes in DOCX and Markdown from a single JSON file.  
-> Built with **TypeScript** and **Clean Architecture**.
+> **Template** — Gere currículos compatíveis com sistemas ATS nos formatos **DOCX** e **Markdown** a partir de um único arquivo JSON.
+> Desenvolvido com **TypeScript** e **Arquitetura Limpa (Clean Architecture)**.
 
-## Features
+## Recursos
 
-- Generates `.docx` and `.md` resumes tailored to multiple job focuses  
-- Extracts keywords from a job description and injects them into the resume  
-- All personal data lives in a single `resume.json` (gitignored — never committed)  
-- All focus configuration lives in `config/` JSON files — no TypeScript changes needed  
-- Clean Architecture: Domain → Application → Infrastructure → Presentation  
+* Gera currículos nos formatos `.docx` e `.md` para diferentes objetivos profissionais.
+* Extrai palavras-chave de uma descrição de vaga e as incorpora ao currículo.
+* Todos os seus dados pessoais ficam centralizados em um único arquivo `resume.json` (ignorado pelo Git — nunca é enviado ao repositório).
+* Toda a configuração dos perfis profissionais fica em arquivos JSON dentro da pasta `config/`, sem necessidade de alterar código TypeScript.
+* Arquitetura baseada em **Clean Architecture**: Domínio → Aplicação → Infraestrutura → Apresentação.
 
 ---
 
-## Quick Start
+## Início Rápido
 
 ```bash
-# 1. Clone / use this template
+# 1. Clone o repositório ou utilize este template
 git clone https://github.com/your-user/ats-cv-generator.git
 cd ats-cv-generator
 
-# 2. Install dependencies
+# 2. Instale as dependências
 npm install
 
-# 3. Create your personal resume file
+# 3. Crie seu arquivo de currículo
 cp resume.example.json resume.json
-# ✏️  Edit resume.json with your real data
+# ✏️ Edite o arquivo resume.json com seus dados reais
 
-# 4. Generate all resumes (DOCX)
+# 4. Gere todos os currículos (DOCX)
 npm run generate -- --all
 
-# 5. Find the results in ./output/
+# 5. Os arquivos gerados estarão na pasta ./output/
 ```
 
 ---
 
-## Customization
+## Personalização
 
-### 1. Your personal data → `resume.json`
+### 1. Seus dados pessoais → `resume.json`
 
-Copy `resume.example.json` to `resume.json` and fill in every field.  
-`resume.json` is gitignored — your personal data never leaves your machine.
+Copie `resume.example.json` para `resume.json` e preencha todos os campos.
 
-### 2. Job focuses → `config/focuses.json`
+O arquivo `resume.json` é ignorado pelo Git, garantindo que seus dados pessoais nunca sejam enviados ao repositório.
 
-Each key is a focus identifier. You can add, rename, or remove focuses.
+### 2. Perfis profissionais → `config/focuses.json`
 
-```jsonc
-{
-  "node_react": {
-    "filename": "Resume_Node_React.docx",
-    "title": "Node.js Full Stack Engineer"
-  }
-}
-```
-
-### 3. Professional profiles → `config/profiles.json`
-
-One paragraph per focus. Written in first or third person — your choice.
-
-```jsonc
-{
-  "node_react": "Software Engineer specialized in..."
-}
-```
-
-### 4. Skills → `config/skills.json`
-
-Grouped by category. Categories appear in the order defined here.
+Cada chave representa um perfil profissional. Você pode adicionar, renomear ou remover perfis conforme desejar.
 
 ```jsonc
 {
   "node_react": {
-    "Languages": ["TypeScript", "JavaScript"],
-    "Backend":   ["Node.js", "Express.js"]
+    "filename": "Curriculo_Node_React.docx",
+    "title": "Engenheiro Full Stack Node.js"
   }
 }
 ```
 
-### 5. Impact rules → `config/impact-rules.json`
+### 3. Resumos profissionais → `config/profiles.json`
 
-Maps company names (matching exactly what's in `resume.json`) to keyword-based impact statements.  
-When an activity matches any keyword in a rule, the result is appended to that activity.
+Defina um resumo profissional para cada perfil. O texto pode ser escrito em primeira ou terceira pessoa.
+
+```jsonc
+{
+  "node_react": "Engenheiro de Software especializado em..."
+}
+```
+
+### 4. Competências → `config/skills.json`
+
+As habilidades são organizadas por categoria e exibidas na ordem definida no arquivo.
+
+```jsonc
+{
+  "node_react": {
+    "Linguagens": ["TypeScript", "JavaScript"],
+    "Backend": ["Node.js", "Express.js"]
+  }
+}
+```
+
+### 5. Regras de impacto → `config/impact-rules.json`
+
+Relaciona empresas (com o mesmo nome utilizado em `resume.json`) a métricas baseadas em palavras-chave.
+
+Quando uma atividade profissional contém alguma das palavras-chave definidas, o resultado correspondente é automaticamente acrescentado à descrição.
 
 ```jsonc
 {
   "Acme Corp": [
     {
       "keywords": ["api", "rest"],
-      "result": "30% reduction in service response time"
+      "result": "Redução de 30% no tempo de resposta dos serviços"
     }
   ]
 }
@@ -96,124 +98,101 @@ When an activity matches any keyword in a rule, the result is appended to that a
 
 ---
 
-## CLI Usage
+## Utilização pela Linha de Comando (CLI)
 
 ```bash
-# All focuses (DOCX)
+# Gerar todos os perfis (DOCX)
 npm run generate -- --all
 
-# Single focus
+# Gerar apenas um perfil
 npm run generate -- --focus=node_react
 
-# Tailored with a job description
-npm run generate -- --focus=node_react --job=job-description.txt
+# Gerar currículo personalizado a partir de uma descrição de vaga
+npm run generate -- --focus=node_react --job=descricao-da-vaga.txt
 
-# All focuses in Markdown
+# Gerar todos os currículos em Markdown
 npm run generate -- --all --markdown
 
-# With a job description + all focuses
-npm run generate -- --all --job=job-description.txt
+# Gerar todos os perfis utilizando uma descrição de vaga
+npm run generate -- --all --job=descricao-da-vaga.txt
 ```
 
-**Available flags:**
+### Opções disponíveis
 
-| Flag | Description |
-|------|-------------|
-| `--all` | Generate all configured focuses |
-| `--focus=<id>` | Generate a single focus |
-| `--job=<file>` | Path to a job description `.txt` file for keyword extraction |
-| `--markdown` | Output `.md` instead of `.docx` |
+| Opção             | Descrição                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| `--all`           | Gera todos os perfis configurados                                                           |
+| `--focus=<id>`    | Gera apenas um perfil específico                                                            |
+| `--job=<arquivo>` | Caminho para um arquivo `.txt` contendo a descrição da vaga para extração de palavras-chave |
+| `--markdown`      | Gera arquivos `.md` em vez de `.docx`                                                       |
 
 ---
 
-## Project Structure
+## Estrutura do Projeto
 
-```
+```text
 ats-cv-generator/
 ├── src/
-│   ├── domain/                     # Business rules (no external dependencies)
+│   ├── domain/                     # Regras de negócio (sem dependências externas)
 │   │   ├── entities/
-│   │   │   ├── Resume.ts           # Resume + RawExperience types
-│   │   │   └── EnrichedExperience.ts
 │   │   ├── interfaces/
-│   │   │   ├── IResumeRepository.ts
-│   │   │   ├── IResumeRenderer.ts
-│   │   │   ├── IKeywordExtractor.ts
-│   │   │   ├── IOutputRepository.ts
-│   │   │   └── IConfigRepository.ts
 │   │   └── services/
-│   │       └── ImpactEnricher.ts   # Domain service: enriches activities with metrics
-│   ├── application/                # Use cases (orchestration only)
-│   │   ├── dtos/
-│   │   │   └── GenerateResumeInput.ts
-│   │   └── use-cases/
-│   │       └── GenerateResumeUseCase.ts
-│   ├── infrastructure/             # External adapters
-│   │   ├── config/
-│   │   │   └── ConfigLoader.ts     # Reads config/*.json
-│   │   ├── keyword-extractors/
-│   │   │   └── FileKeywordExtractor.ts
-│   │   ├── renderers/
-│   │   │   ├── DocxResumeRenderer.ts
-│   │   │   └── MarkdownResumeRenderer.ts
-│   │   └── repositories/
-│   │       ├── JsonResumeRepository.ts  # Reads resume.json
-│   │       └── FileOutputRepository.ts # Writes to output/
-│   ├── presentation/
-│   │   └── cli/
-│   │       ├── ArgParser.ts        # Parses CLI args
-│   │       └── CliController.ts    # Composition root + wires dependencies
-│   └── main.ts                     # Entry point
-├── config/                         # ✏️  Customize these JSON files
-│   ├── focuses.json                # Focus IDs, titles, output filenames
-│   ├── profiles.json               # Professional summaries per focus
-│   ├── skills.json                 # Skills grouped by category per focus
-│   └── impact-rules.json          # Keyword → metric rules per company
-├── resume.example.json             # Template — copy to resume.json
-├── resume.json                     # ← Your data (gitignored)
-├── output/                         # Generated resumes (gitignored)
+│   ├── application/                # Casos de uso
+│   ├── infrastructure/             # Adaptadores externos
+│   ├── presentation/               # Interface de linha de comando (CLI)
+│   └── main.ts                     # Ponto de entrada
+├── config/                         # Arquivos de configuração
+│   ├── focuses.json
+│   ├── profiles.json
+│   ├── skills.json
+│   └── impact-rules.json
+├── resume.example.json             # Modelo de currículo
+├── resume.json                     # Seus dados (ignorado pelo Git)
+├── output/                         # Currículos gerados (ignorado pelo Git)
 ├── tsconfig.json
 └── package.json
 ```
 
 ---
 
-## Architecture
+## Arquitetura
 
-```
-         CLI args
+```text
+        Argumentos CLI
               │
     ┌─────────▼──────────┐
-    │  Presentation/CLI  │  ArgParser + CliController
+    │ Apresentação (CLI) │
     └─────────┬──────────┘
-              │ GenerateResumeInput
-    ┌─────────▼──────────┐
-    │   Application      │  GenerateResumeUseCase
-    └──┬───┬───┬───┬─────┘
-       │   │   │   │        (all via interfaces)
-       │   │   │   └──► IOutputRepository
-       │   │   └──────► IKeywordExtractor
-       │   └──────────► IResumeRenderer
-       └──────────────► IResumeRepository + IConfigRepository
               │
     ┌─────────▼──────────┐
-    │   Infrastructure   │  Concrete implementations
+    │     Aplicação      │
+    └─────────┬──────────┘
+              │
+    ┌─────────▼──────────┐
+    │      Domínio       │
+    └─────────┬──────────┘
+              │
+    ┌─────────▼──────────┐
+    │   Infraestrutura   │
     └────────────────────┘
 ```
 
-The domain layer has **zero external dependencies** — no `fs`, no `docx`, no `path`.
+A camada de **Domínio** possui **zero dependências externas**. Ela não depende de bibliotecas como `fs`, `docx` ou `path`, tornando as regras de negócio independentes e facilmente testáveis.
 
 ---
 
-## Building (compiled output)
+## Compilação
 
 ```bash
-npm run build          # compiles to dist/
+# Compila o projeto para a pasta dist/
+npm run build
+
+# Executa a versão compilada
 npm run generate:compiled -- --all
 ```
 
 ---
 
-## License
+## Licença
 
-MIT
+Este projeto está licenciado sob a **Licença MIT**.
