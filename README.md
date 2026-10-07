@@ -3,9 +3,72 @@
 > **Template** — Gere currículos compatíveis com sistemas ATS nos formatos **DOCX** e **Markdown** a partir de um único arquivo JSON.
 > Desenvolvido com **TypeScript** e **Arquitetura Limpa (Clean Architecture)**.
 
+## Dois modos de uso
+
+O ATS Forge funciona de duas formas:
+
+1. **CLI** (template original) — gera currículos a partir de `resume.json` + `config/`.
+2. **Serviço HTTP (backend de currículos)** — recebe um **perfil normalizado** por HTTP
+   e devolve o currículo em **DOCX**, **PDF** ou **Markdown**, com um **ATS Score**. É
+   assim que a plataforma *Candidate* integra a geração de currículos.
+
+### Serviço HTTP
+
+```bash
+npm install
+npm run build
+
+# Sobe o serviço (porta padrão 8089; configurável via PORT/ATS_FORGE_PORT)
+npm start
+# ou, em desenvolvimento:
+npm run serve
+```
+
+Variáveis de ambiente:
+
+| Variável            | Descrição                                                              |
+| ------------------- | ---------------------------------------------------------------------- |
+| `PORT`              | Porta do serviço (padrão `8089`).                                      |
+| `ATS_FORGE_API_KEY` | Se definido, exige o header `x-api-key`. Vazio = autenticação off.     |
+
+#### `POST /resumes/generate`
+
+Corpo (JSON):
+
+```jsonc
+{
+  "profile": {
+    "name": "Ana Souza",
+    "headline": "Engenheira de Software Backend",
+    "summary": "...",                 // opcional; se ausente, é derivado das evidências
+    "contact": { "email": "...", "phone": "...", "website": "..." },
+    "experience": [ { "company": "...", "role": "...", "period": "...",
+                      "stack": ["..."], "highlights": ["..."], "results": ["..."] } ],
+    "education": [ { "institution": "...", "degree": "...", "field": "..." } ],
+    "skills":    [ { "name": "TypeScript", "years": 5, "category": "Linguagens" } ],
+    "projects":  [ { "name": "...", "description": "...", "stack": ["..."] } ],
+    "links":     [ { "type": "github", "url": "..." } ],
+    "languages": [ { "name": "Português", "level": "Nativo" } ]
+  },
+  "job":    { "title": "...", "description": "..." },   // opcional
+  "format": "pdf"                                       // "docx" | "pdf" | "md"
+}
+```
+
+Resposta: o arquivo binário/texto no corpo, com:
+
+* `Content-Disposition: attachment; filename="..."`
+* `X-Ats-Score: 0-100` — pontuação estimada de compatibilidade ATS.
+* `X-Ats-Report: <base64 JSON>` — relatório completo (breakdown, matched/missing keywords, sugestões).
+
+O motor **nunca inventa** empresas, cargos, datas, tecnologias ou resultados: ele apenas
+organiza, resume e adapta palavras-chave a partir das evidências recebidas no perfil.
+
+---
+
 ## Recursos
 
-* Gera currículos nos formatos `.docx` e `.md` para diferentes objetivos profissionais.
+* Gera currículos nos formatos `.docx`, `.pdf` e `.md` para diferentes objetivos profissionais.
 * Extrai palavras-chave de uma descrição de vaga e as incorpora ao currículo.
 * Todos os seus dados pessoais ficam centralizados em um único arquivo `resume.json` (ignorado pelo Git — nunca é enviado ao repositório).
 * Toda a configuração dos perfis profissionais fica em arquivos JSON dentro da pasta `config/`, sem necessidade de alterar código TypeScript.

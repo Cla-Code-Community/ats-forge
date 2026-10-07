@@ -1,14 +1,23 @@
 {
   "name": "ats-cv-generator",
   "version": "2.0.0",
-  "description": "ATS-friendly resume generator (DOCX + Markdown) — Clean Architecture, TypeScript template",
-  "main": "dist/main.js",
+  "description": "ATS resume-generation engine & microservice (DOCX + PDF + Markdown) — Clean Architecture, TypeScript",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "generate": "ts-node src/main.ts",
     "generate:compiled": "node dist/main.js",
+    "serve": "ts-node src/http.ts",
+    "serve:compiled": "node dist/http.js",
+    "start": "node dist/http.js",
     "setup": "cp resume.example.json resume.json",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "resume",
@@ -22,12 +31,22 @@
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
-    "docx": "^9.6.1"
+    "cors": "^2.8.5",
+    "docx": "^9.6.1",
+    "express": "^4.21.2",
+    "pdfkit": "^0.15.1",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
     "@types/node": "^20.19.39",
+    "@types/pdfkit": "^0.13.9",
+    "@types/supertest": "^6.0.2",
     "rimraf": "^5.0.10",
+    "supertest": "^7.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.8"
   }
 }
