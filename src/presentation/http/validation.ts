@@ -87,6 +87,7 @@ export const generateResumeSchema = z.object({
   profile: normalizedProfileSchema,
   job: jobTargetSchema.nullish(),
   sources: sourcesSchema.nullish(),
+  about: z.string().max(4000).nullish(),
   format: z.enum(['docx', 'pdf', 'md']).default('docx'),
   filename: z.string().max(120).optional(),
 });

@@ -34,11 +34,16 @@ export async function generateResumeHandler(req: Request, res: Response): Promis
     profile: body.profile,
     job: body.job ?? null,
     sources: body.sources ?? null,
+    about: body.about ?? null,
     format: body.format,
     filename: body.filename,
   });
 
-  const reportJson = JSON.stringify({ ...result.atsReport, warnings: result.warnings });
+  const reportJson = JSON.stringify({
+    ...result.atsReport,
+    warnings: result.warnings,
+    sourcesUsed: result.sourcesUsed,
+  });
   res.setHeader('Content-Type', result.contentType);
   res.setHeader(
     'Content-Disposition',
@@ -56,4 +61,39 @@ export async function generateResumeHandler(req: Request, res: Response): Promis
   } else {
     res.status(200).send(Buffer.from(result.content, 'utf-8'));
   }
+}
+
+/**
+ * POST /resumes/analyze
+ *
+ * Same inputs as /generate, but returns a JSON preview (structured, sanitized,
+ * ATS-safe resume) plus the ATS report and the sources used — for on-screen
+ * preview without downloading a file.
+ */
+export async function analyzeResumeHandler(req: Request, res: Response): Promise<void> {
+  let body;
+  try {
+    body = generateResumeSchema.parse(req.body);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Perfil normalizado inválido.',
+        details: err.flatten().fieldErrors,
+      });
+      return;
+    }
+    throw err;
+  }
+
+  const result = await useCase.analyze({
+    profile: body.profile,
+    job: body.job ?? null,
+    sources: body.sources ?? null,
+    about: body.about ?? null,
+    format: body.format,
+    filename: body.filename,
+  });
+
+  res.status(200).json(result);
 }

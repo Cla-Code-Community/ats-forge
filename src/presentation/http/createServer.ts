@@ -1,7 +1,7 @@
 import cors from 'cors';
 import express, { NextFunction, Request, Response } from 'express';
 import { apiKeyAuth } from './apiKeyAuth';
-import { generateResumeHandler } from './resumeController';
+import { analyzeResumeHandler, generateResumeHandler } from './resumeController';
 
 export interface ServerOptions {
   apiKey?: string;
@@ -28,6 +28,10 @@ export function createServer(options: ServerOptions = {}) {
 
   app.post('/resumes/generate', apiKeyAuth(options.apiKey), (req, res, next) => {
     generateResumeHandler(req, res).catch(next);
+  });
+
+  app.post('/resumes/analyze', apiKeyAuth(options.apiKey), (req, res, next) => {
+    analyzeResumeHandler(req, res).catch(next);
   });
 
   // Fallback 404

@@ -10,6 +10,9 @@ export type {
 } from './domain/services/AtsAnalyzer';
 export { ResumeOptimizer } from './domain/services/ResumeOptimizer';
 export type { OptimizationResult } from './domain/services/ResumeOptimizer';
+export { ResumeTailor } from './domain/services/ResumeTailor';
+export { SummaryWriter } from './domain/services/SummaryWriter';
+export { sanitizeText, humanizeName } from './domain/services/TextSanitizer';
 export {
   categoryOf,
   extractTechnologies,
@@ -21,7 +24,11 @@ export { extractKeywordsFromText } from './domain/services/KeywordExtractor';
 export { mapProfileToRenderPayload } from './domain/services/ProfileMapper';
 
 export { GenerateResumeFromProfileUseCase } from './application/use-cases/GenerateResumeFromProfileUseCase';
-export type { GenerateResumeResult } from './application/use-cases/GenerateResumeFromProfileUseCase';
+export type {
+  GenerateResumeResult,
+  AnalyzeResult,
+  ResumePreview,
+} from './application/use-cases/GenerateResumeFromProfileUseCase';
 export type {
   GenerateFromProfileInput,
   ResumeFormat,

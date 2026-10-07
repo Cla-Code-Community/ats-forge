@@ -175,18 +175,24 @@ export class AtsAnalyzer {
     evidence: Set<string>,
     profileTechs: Set<string>,
   ): { keywords: number; matched: string[]; missing: string[] } {
-    if (analysis.keywords.length === 0) {
-      // No job: reward the breadth of the candidate's real keyword footprint.
+    // Only the job's real technical keywords (Java, Node.js, MuleSoft, …) count —
+    // never generic words like "desenvolvimento" or "experiência". These are then
+    // cross-referenced with the candidate's evidence (profile + GitHub + LinkedIn).
+    const jobTechs = analysis.hardSkills;
+
+    if (jobTechs.length === 0) {
+      // No recognizable tech requirements: fall back to the breadth of the
+      // candidate's own keyword footprint, with no noisy matched/missing lists.
       const count = evidence.size;
       const value = count >= 45 ? 92 : count >= 30 ? 85 : count >= 18 ? 72 : count >= 8 ? 55 : 32;
       return { keywords: value, matched: [], missing: [] };
     }
 
     const isMatch = (k: string) =>
-      evidence.has(k.toLowerCase()) || profileTechs.has(k.toLowerCase());
-    const matched = analysis.keywords.filter(isMatch);
-    const missing = analysis.keywords.filter((k) => !isMatch(k));
-    const coverage = Math.round((matched.length / analysis.keywords.length) * 100);
+      profileTechs.has(k.toLowerCase()) || evidence.has(k.toLowerCase());
+    const matched = jobTechs.filter(isMatch);
+    const missing = jobTechs.filter((k) => !isMatch(k));
+    const coverage = Math.round((matched.length / jobTechs.length) * 100);
     return { keywords: this.clamp(coverage), matched, missing };
   }
 

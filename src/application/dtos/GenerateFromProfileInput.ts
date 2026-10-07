@@ -9,6 +9,9 @@ export interface GenerateFromProfileInput {
   format: ResumeFormat;
   /** Public GitHub/LinkedIn links to enrich the profile from. */
   sources?: EnrichmentSources | null;
+  /** Candidate's own "about" text (e.g. the LinkedIn "Sobre"), used as the base
+   * for a short, job-tailored professional summary. */
+  about?: string | null;
   /** Optional base filename (without extension). Defaults to the candidate name. */
   filename?: string;
 }

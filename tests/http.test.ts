@@ -49,6 +49,30 @@ describe('HTTP /resumes/generate', () => {
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 
+  it('POST /resumes/analyze retorna preview + ats + sourcesUsed', async () => {
+    const app = createServer();
+    const res = await request(app)
+      .post('/resumes/analyze')
+      .send({ profile: fullProfile(), job: { title: 'Backend', description: 'node.js typescript' }, format: 'pdf' })
+      .expect(200);
+
+    expect(res.body.resume).toBeDefined();
+    expect(res.body.resume.name).toBe('Ana Souza');
+    expect(res.body.resume.skills).toBeTypeOf('object');
+    expect(res.body.atsReport.score).toBeGreaterThanOrEqual(0);
+    expect(res.body.sourcesUsed).toContain('candidate');
+    expect(res.body.job).toEqual({ title: 'Backend', hasDescription: true });
+  });
+
+  it('POST /resumes/analyze valida o corpo (400)', async () => {
+    const app = createServer();
+    const res = await request(app)
+      .post('/resumes/analyze')
+      .send({ profile: { contact: {} } })
+      .expect(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
   it('exige API key quando configurada', async () => {
     const app = createServer({ apiKey: 'segredo' });
 

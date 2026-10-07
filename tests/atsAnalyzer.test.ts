@@ -18,17 +18,42 @@ describe('AtsAnalyzer v2', () => {
     expect(analysis.seniority).toBe('Sênior');
   });
 
-  it('só conta keywords com evidência no perfil (sem inventar)', () => {
+  it('conta apenas as TECNOLOGIAS da vaga (não palavras genéricas) e cruza com o perfil', () => {
     const analysis = analyzer.analyzeJob({
-      description: 'Buscamos TypeScript, Node.js, Kubernetes e Docker.',
+      description:
+        'Buscamos profissional com experiência em desenvolvimento usando Java, Node.js, Kubernetes e Docker.',
     });
     const report = analyzer.score(fullProfile(), analysis);
 
+    // só techs reais da vaga, em nome canônico
     expect(report.matchedKeywords).toEqual(
-      expect.arrayContaining(['typescript', 'node.js']),
+      expect.arrayContaining(['Node.js']),
     );
-    expect(report.missingKeywords).toEqual(expect.arrayContaining(['kubernetes']));
-    expect(report.matchedKeywords).not.toContain('kubernetes');
+    expect(report.missingKeywords).toEqual(
+      expect.arrayContaining(['Kubernetes', 'Docker']),
+    );
+    // palavras genéricas não entram no filtro
+    expect(report.matchedKeywords).not.toContain('desenvolvimento');
+    expect(report.missingKeywords).not.toContain('experiência');
+    expect(report.matchedKeywords).not.toContain('Kubernetes');
+  });
+
+  it('junta vaga (java, node, mulesoft) com as techs do perfil (GitHub/LinkedIn)', () => {
+    const profile = {
+      ...fullProfile(),
+      skills: [
+        { name: 'Java', category: 'Linguagens' },
+        { name: 'Node.js', category: 'Backend' },
+      ],
+    };
+    const analysis = analyzer.analyzeJob({
+      title: 'Desenvolvedor Backend',
+      description: 'Java, Node.js e MuleSoft para integrações.',
+    });
+    const report = analyzer.score(profile, analysis);
+
+    expect(report.matchedKeywords.sort()).toEqual(['Java', 'Node.js']);
+    expect(report.missingKeywords).toEqual(['MuleSoft']);
   });
 
   it('retorna score, status e breakdown de 6 dimensões', () => {

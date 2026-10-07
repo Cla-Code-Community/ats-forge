@@ -28,6 +28,8 @@ export interface EnrichmentSources {
 export interface EnrichmentResult {
   profile: NormalizedProfile;
   warnings: string[];
+  /** Which external sources actually contributed data (for UI transparency). */
+  sourcesUsed: string[];
 }
 
 interface GitHubUser {
@@ -70,13 +72,17 @@ export class GitHubEnricher {
     sources: EnrichmentSources | undefined,
   ): Promise<EnrichmentResult> {
     const warnings: string[] = [];
+    const sourcesUsed = ['candidate'];
     let enriched = profile;
 
     const linkedin = normalizeLinkedIn(sources?.linkedin);
-    if (linkedin) enriched = addLink(enriched, 'linkedin', linkedin);
+    if (linkedin) {
+      enriched = addLink(enriched, 'linkedin', linkedin);
+      sourcesUsed.push('linkedin');
+    }
 
     const username = parseGitHubUsername(sources?.github);
-    if (!username) return { profile: enriched, warnings };
+    if (!username) return { profile: enriched, warnings, sourcesUsed };
 
     try {
       const [user, repos] = await Promise.all([
@@ -100,13 +106,14 @@ export class GitHubEnricher {
       ]);
 
       enriched = this.mergeGitHub(enriched, user, relevant, profileReadme, repoReadmes);
+      sourcesUsed.push('github');
     } catch (err) {
       warnings.push(
         `Não foi possível importar o GitHub "${username}": ${(err as Error).message}. O currículo foi gerado com os demais dados.`,
       );
     }
 
-    return { profile: enriched, warnings };
+    return { profile: enriched, warnings, sourcesUsed };
   }
 
   private mergeGitHub(
