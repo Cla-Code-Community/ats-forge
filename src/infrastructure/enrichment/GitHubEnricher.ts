@@ -8,6 +8,8 @@ import {
   extractTechnologies,
   normalizeTechList,
 } from '../../domain/services/TechTaxonomy';
+import { extractSkillEvidence } from '../../domain/services/EvidenceExtractor';
+import { stripGitHubReadmeMarkup } from '../../domain/services/TextSanitizer';
 
 /**
  * Enriches a normalized profile with PUBLIC GitHub data: the profile, the
@@ -61,10 +63,14 @@ interface GitHubReadme {
 }
 
 const API = 'https://api.github.com';
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 6000;
+// Orçamento total da importação; deve ficar abaixo do timeout do backend.
+const TOTAL_BUDGET_MS = 14000;
 const MAX_PROJECTS = 5;
 const MAX_README_FETCHES = 5;
 const MAX_SKILLS_FROM_GITHUB = 20;
+const MAX_GITHUB_JSON_BYTES = 1024 * 1024;
+const MAX_README_JSON_BYTES = 512 * 1024;
 
 export class GitHubEnricher {
   async enrich(
@@ -82,9 +88,33 @@ export class GitHubEnricher {
     }
 
     const username = parseGitHubUsername(sources?.github);
-    if (!username) return { profile: enriched, warnings, sourcesUsed };
+    if (!username) {
+      if (sources?.github?.trim()) {
+        warnings.push('O identificador informado não é um username ou URL válido do GitHub.');
+      }
+      return { profile: enriched, warnings, sourcesUsed };
+    }
 
     try {
+      enriched = await withDeadline(
+        this.importGitHub(enriched, username),
+        TOTAL_BUDGET_MS,
+      );
+      sourcesUsed.push('github');
+    } catch (err) {
+      warnings.push(
+        `Não foi possível importar o GitHub "${username}": ${(err as Error).message}. O currículo foi gerado com os demais dados.`,
+      );
+    }
+
+    return { profile: enriched, warnings, sourcesUsed };
+  }
+
+  private async importGitHub(
+    profile: NormalizedProfile,
+    username: string,
+  ): Promise<NormalizedProfile> {
+    {
       const [user, repos] = await Promise.all([
         this.fetchJson<GitHubUser>(`${API}/users/${username}`),
         this.fetchJson<GitHubRepo[]>(
@@ -105,15 +135,8 @@ export class GitHubEnricher {
           .map((r) => this.fetchReadme(username, r.name)),
       ]);
 
-      enriched = this.mergeGitHub(enriched, user, relevant, profileReadme, repoReadmes);
-      sourcesUsed.push('github');
-    } catch (err) {
-      warnings.push(
-        `Não foi possível importar o GitHub "${username}": ${(err as Error).message}. O currículo foi gerado com os demais dados.`,
-      );
+      return this.mergeGitHub(profile, user, relevant, profileReadme, repoReadmes);
     }
-
-    return { profile: enriched, warnings, sourcesUsed };
   }
 
   private mergeGitHub(
@@ -123,13 +146,15 @@ export class GitHubEnricher {
     profileReadme: string | null,
     repoReadmes: Array<string | null>,
   ): NormalizedProfile {
+    const cleanProfileReadme = stripGitHubReadmeMarkup(profileReadme);
+    const cleanRepoReadmes = repoReadmes.map(stripGitHubReadmeMarkup);
     // ── Technologies from every public signal ────────────────────────────────
     const techText = [
       user.bio ?? '',
-      profileReadme ?? '',
+      cleanProfileReadme,
       ...repos.map((r) => r.description ?? ''),
       ...repos.flatMap((r) => r.topics ?? []),
-      ...repoReadmes.filter((x): x is string => Boolean(x)),
+      ...cleanRepoReadmes,
     ].join('\n');
 
     const languages = repos.map((r) => r.language).filter((l): l is string => Boolean(l));
@@ -152,7 +177,7 @@ export class GitHubEnricher {
       .filter((r) => r.description || r.stargazers_count > 0 || r.topics?.length)
       .slice(0, MAX_PROJECTS)
       .map((r, idx) => {
-        const readme = repoReadmes[idx] ?? '';
+        const readme = cleanRepoReadmes[idx] ?? '';
         const stack = normalizeTechList([
           ...(r.language ? [r.language] : []),
           ...(r.topics ?? []),
@@ -178,6 +203,20 @@ export class GitHubEnricher {
     const summary =
       profile.summary || (user.bio && user.bio.length <= 240 ? user.bio : undefined);
 
+    const githubEvidence = [
+      ...extractSkillEvidence(user.bio ?? '', 'github', 'profile_mention'),
+      ...extractSkillEvidence(cleanProfileReadme, 'github', 'profile_mention'),
+      ...repos.flatMap((repo, index) => [
+        ...extractSkillEvidence(repo.language ?? '', 'github', 'profile_mention'),
+        ...extractSkillEvidence((repo.topics ?? []).join(' '), 'github', 'profile_mention'),
+        ...extractSkillEvidence(
+          `${repo.description ?? ''}\n${cleanRepoReadmes[index] ?? ''}`,
+          'github',
+          'project',
+        ),
+      ]),
+    ];
+
     let merged: NormalizedProfile = {
       ...profile,
       summary: summary?.trim() || undefined,
@@ -188,6 +227,7 @@ export class GitHubEnricher {
       },
       skills: [...profile.skills, ...githubSkills],
       projects: [...profile.projects, ...topProjects],
+      evidence: [...(profile.evidence ?? []), ...githubEvidence],
     };
 
     merged = addLink(merged, 'github', user.html_url);
@@ -205,7 +245,7 @@ export class GitHubEnricher {
     if (res.status === 404) throw new Error('perfil não encontrado');
     if (res.status === 403) throw new Error('limite de requisições do GitHub atingido');
     if (!res.ok) throw new Error(`GitHub respondeu HTTP ${res.status}`);
-    return (await res.json()) as T;
+    return readBoundedJson<T>(res, MAX_GITHUB_JSON_BYTES);
   }
 
   /** Fetches and decodes a repo's README. Returns null if there is none. */
@@ -216,7 +256,7 @@ export class GitHubEnricher {
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) return null;
-      const body = (await res.json()) as GitHubReadme;
+      const body = await readBoundedJson<GitHubReadme>(res, MAX_README_JSON_BYTES);
       if (!body.content) return null;
       const buf = Buffer.from(body.content, (body.encoding as BufferEncoding) ?? 'base64');
       return buf.toString('utf-8');
@@ -227,6 +267,17 @@ export class GitHubEnricher {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error('tempo limite excedido ao consultar a API do GitHub')),
+      ms,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 function byRelevance(a: GitHubRepo, b: GitHubRepo): number {
   // Stars first, then most recently pushed.
@@ -250,9 +301,56 @@ export function parseGitHubUsername(input: string | undefined): string | null {
   if (!input) return null;
   const trimmed = input.trim();
   if (!trimmed) return null;
-  const urlMatch = /github\.com\/([A-Za-z0-9-]+)/i.exec(trimmed);
-  const candidate = urlMatch ? urlMatch[1] : trimmed.replace(/^@/, '');
+  let candidate: string;
+  if (/^(?:https?:\/\/)?(?:www\.)?github\.com\//i.test(trimmed)) {
+    try {
+      const url = new URL(
+        /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
+      );
+      if (!['github.com', 'www.github.com'].includes(url.hostname.toLowerCase())) {
+        return null;
+      }
+      const path = url.pathname.split('/').filter(Boolean);
+      if (path.length !== 1) return null;
+      candidate = path[0];
+    } catch {
+      return null;
+    }
+  } else if (trimmed.includes('/') || trimmed.includes('://')) {
+    return null;
+  } else {
+    candidate = trimmed.replace(/^@/, '');
+  }
   return /^[A-Za-z0-9-]{1,39}$/.test(candidate) ? candidate : null;
+}
+
+async function readBoundedJson<T>(response: Response, maxBytes: number): Promise<T> {
+  const declaredLength = Number(response.headers?.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new Error('resposta do GitHub excede o limite de tamanho permitido');
+  }
+
+  if (!response.body) {
+    const value: unknown = await response.json();
+    return value as T;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let json = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      throw new Error('resposta do GitHub excede o limite de tamanho permitido');
+    }
+    json += decoder.decode(value, { stream: true });
+  }
+  json += decoder.decode();
+  return JSON.parse(json) as T;
 }
 
 function normalizeLinkedIn(input: string | undefined): string | null {

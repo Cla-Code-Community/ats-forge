@@ -1,12 +1,3 @@
-/**
- * Technology taxonomy: canonical names, alias normalization, category mapping
- * and extraction of known technologies from free text (READMEs, bios, job
- * descriptions). This powers keyword coverage, deduplication and skill grouping.
- *
- * It only RECOGNIZES technologies that actually appear in the provided text —
- * it never invents them (spec §3/§7/§18).
- */
-
 export type TechCategory =
   | 'Linguagens'
   | 'Backend'
@@ -21,13 +12,15 @@ export type TechCategory =
 interface TechDef {
   canonical: string;
   category: TechCategory;
-  aliases: string[]; // lowercase; may contain spaces/dots/#/+
+  aliases: string[];
 }
 
+export const TECH_TAXONOMY_VERSION = '1.1.0';
+
 const TECHS: TechDef[] = [
-  // Languages
+ 
   { canonical: 'JavaScript', category: 'Linguagens', aliases: ['javascript', 'js'] },
-  { canonical: 'TypeScript', category: 'Linguagens', aliases: ['typescript', 'ts'] },
+  { canonical: 'TypeScript', category: 'Linguagens', aliases: ['typescript'] },
   { canonical: 'Java', category: 'Linguagens', aliases: ['java'] },
   { canonical: 'Python', category: 'Linguagens', aliases: ['python', 'py'] },
   { canonical: 'Go', category: 'Linguagens', aliases: ['golang', 'go'] },
@@ -45,8 +38,7 @@ const TECHS: TechDef[] = [
   { canonical: 'HTML', category: 'Frontend', aliases: ['html', 'html5'] },
   { canonical: 'CSS', category: 'Frontend', aliases: ['css', 'css3'] },
 
-  // Backend / frameworks
-  { canonical: 'Node.js', category: 'Backend', aliases: ['node.js', 'nodejs', 'node'] },
+  { canonical: 'Node.js', category: 'Backend', aliases: ['node.js', 'nodejs', 'node js'] },
   { canonical: 'Express.js', category: 'Backend', aliases: ['express.js', 'express', 'expressjs'] },
   { canonical: 'NestJS', category: 'Backend', aliases: ['nestjs', 'nest.js', 'nest'] },
   { canonical: 'Spring Boot', category: 'Backend', aliases: ['spring boot', 'springboot'] },
@@ -60,7 +52,6 @@ const TECHS: TechDef[] = [
   { canonical: 'GraphQL', category: 'Backend', aliases: ['graphql'] },
   { canonical: 'MuleSoft', category: 'Backend', aliases: ['mulesoft', 'mule'] },
 
-  // Frontend
   { canonical: 'React', category: 'Frontend', aliases: ['react', 'react.js', 'reactjs'] },
   { canonical: 'Next.js', category: 'Frontend', aliases: ['next.js', 'nextjs', 'next'] },
   { canonical: 'Vue.js', category: 'Frontend', aliases: ['vue.js', 'vuejs', 'vue'] },
@@ -71,7 +62,6 @@ const TECHS: TechDef[] = [
   { canonical: 'React Native', category: 'Frontend', aliases: ['react native', 'react-native'] },
   { canonical: 'Flutter', category: 'Frontend', aliases: ['flutter'] },
 
-  // Databases
   { canonical: 'PostgreSQL', category: 'Bancos de Dados', aliases: ['postgresql', 'postgres', 'psql'] },
   { canonical: 'MySQL', category: 'Bancos de Dados', aliases: ['mysql'] },
   { canonical: 'MongoDB', category: 'Bancos de Dados', aliases: ['mongodb', 'mongo'] },
@@ -82,7 +72,6 @@ const TECHS: TechDef[] = [
   { canonical: 'Elasticsearch', category: 'Bancos de Dados', aliases: ['elasticsearch', 'elastic search'] },
   { canonical: 'DynamoDB', category: 'Bancos de Dados', aliases: ['dynamodb', 'dynamo'] },
 
-  // Infra / DevOps
   { canonical: 'Docker', category: 'Infraestrutura & DevOps', aliases: ['docker'] },
   { canonical: 'Kubernetes', category: 'Infraestrutura & DevOps', aliases: ['kubernetes', 'k8s'] },
   { canonical: 'GitHub Actions', category: 'Infraestrutura & DevOps', aliases: ['github actions', 'gh actions'] },
@@ -95,14 +84,12 @@ const TECHS: TechDef[] = [
   { canonical: 'Kafka', category: 'Infraestrutura & DevOps', aliases: ['kafka', 'apache kafka'] },
   { canonical: 'RabbitMQ', category: 'Infraestrutura & DevOps', aliases: ['rabbitmq'] },
 
-  // Cloud
   { canonical: 'AWS', category: 'Cloud', aliases: ['aws', 'amazon web services'] },
   { canonical: 'Google Cloud', category: 'Cloud', aliases: ['gcp', 'google cloud', 'google cloud platform'] },
   { canonical: 'Azure', category: 'Cloud', aliases: ['azure', 'microsoft azure'] },
   { canonical: 'Vercel', category: 'Cloud', aliases: ['vercel'] },
   { canonical: 'Heroku', category: 'Cloud', aliases: ['heroku'] },
 
-  // Testing
   { canonical: 'Jest', category: 'Testes', aliases: ['jest'] },
   { canonical: 'Vitest', category: 'Testes', aliases: ['vitest'] },
   { canonical: 'JUnit', category: 'Testes', aliases: ['junit'] },
@@ -111,7 +98,6 @@ const TECHS: TechDef[] = [
   { canonical: 'Testing Library', category: 'Testes', aliases: ['testing library', 'testing-library'] },
   { canonical: 'Pytest', category: 'Testes', aliases: ['pytest'] },
 
-  // Architecture / practices
   { canonical: 'REST API', category: 'Arquitetura & Práticas', aliases: ['rest api', 'rest apis', 'rest', 'restful'] },
   { canonical: 'Microservices', category: 'Arquitetura & Práticas', aliases: ['microservices', 'microservice', 'microsserviços', 'microsservicos'] },
   { canonical: 'Clean Architecture', category: 'Arquitetura & Práticas', aliases: ['clean architecture', 'arquitetura limpa'] },
@@ -122,7 +108,6 @@ const TECHS: TechDef[] = [
   { canonical: 'gRPC', category: 'Arquitetura & Práticas', aliases: ['grpc'] },
   { canonical: 'WebSockets', category: 'Arquitetura & Práticas', aliases: ['websocket', 'websockets'] },
 
-  // Tools
   { canonical: 'Git', category: 'Ferramentas', aliases: ['git'] },
   { canonical: 'Prisma', category: 'Ferramentas', aliases: ['prisma'] },
   { canonical: 'Drizzle ORM', category: 'Ferramentas', aliases: ['drizzle', 'drizzle orm'] },
@@ -130,7 +115,6 @@ const TECHS: TechDef[] = [
   { canonical: 'Swagger', category: 'Ferramentas', aliases: ['swagger', 'openapi'] },
 ];
 
-// Build lookup maps.
 const ALIAS_TO_CANONICAL = new Map<string, string>();
 const CANONICAL_TO_CATEGORY = new Map<string, TechCategory>();
 for (const def of TECHS) {
@@ -139,33 +123,20 @@ for (const def of TECHS) {
   for (const alias of def.aliases) ALIAS_TO_CANONICAL.set(alias, def.canonical);
 }
 
-// Aliases sorted by length desc so multi-word terms match before their parts
-// ("spring boot" before "spring", "react native" before "react").
 const SORTED_ALIASES = [...ALIAS_TO_CANONICAL.keys()].sort((a, b) => b.length - a.length);
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-
-/** Normalizes a single technology token to its canonical name (or trims it). */
 export function normalizeTech(raw: string): string {
   const key = raw.trim().toLowerCase();
   return ALIAS_TO_CANONICAL.get(key) ?? raw.trim();
 }
-
-/** Canonical category for a (canonical or alias) tech name. */
 export function categoryOf(tech: string): TechCategory | undefined {
   const canonical = normalizeTech(tech);
   return CANONICAL_TO_CATEGORY.get(canonical);
 }
 
-/**
- * Extracts the set of known technologies mentioned in free text, returned as
- * canonical names (deduplicated). Longer aliases are matched first and the
- * matched span is blanked out, so compound terms ("Spring Boot") win over their
- * parts ("Spring"). Boundaries use look-behind/ahead so adjacent tokens still
- * match.
- */
 export function extractTechnologies(text: string): string[] {
   if (!text) return [];
   let haystack = text.toLowerCase();
@@ -181,18 +152,70 @@ export function extractTechnologies(text: string): string[] {
     let matched = false;
     haystack = haystack.replace(pattern, (m) => {
       matched = true;
-      return ' '.repeat(m.length); // blank the span so sub-aliases can't re-match
+      return ' '.repeat(m.length); 
     });
     if (matched && !seen.has(canonical)) {
       seen.add(canonical);
       found.push(canonical);
     }
   }
+  if (
+    /\bts\b/i.test(text) &&
+    /\b(typescript|javascript|programming language|linguagem(?:s)?|stack|desenvolvimento)\b/i.test(
+      text,
+    ) &&
+    !seen.has('TypeScript')
+  ) {
+    found.push('TypeScript');
+  }
 
   return found;
 }
 
-/** Normalizes + dedupes a list of tech names to canonical form. */
+export function findTechnologyMentions(
+  text: string,
+  canonicalName: string,
+): Array<{ text: string; position: number }> {
+  const aliases = SORTED_ALIASES.filter(
+    (alias) => ALIAS_TO_CANONICAL.get(alias) === canonicalName,
+  );
+  const matches = aliases.flatMap((alias) => {
+    const pattern = new RegExp(
+      `(?<![a-z0-9+#])${escapeRegExp(alias)}(?![a-z0-9+#])`,
+      'gi',
+    );
+    return [...text.matchAll(pattern)].flatMap((match) =>
+      match.index === undefined
+        ? []
+        : [{ text: match[0], position: match.index }],
+    );
+  });
+  if (
+    canonicalName === 'TypeScript' &&
+    /\bts\b/i.test(text) &&
+    /\b(typescript|javascript|programming language|linguagem(?:s)?|stack|desenvolvimento)\b/i.test(
+      text,
+    )
+  ) {
+    const contextual = /\bts\b/i.exec(text);
+    if (contextual?.index !== undefined) {
+      matches.push({ text: contextual[0], position: contextual.index });
+    }
+  }
+
+  return matches
+    .sort((a, b) => a.position - b.position || b.text.length - a.text.length)
+    .filter(
+      (match, index, all) =>
+        !all
+          .slice(0, index)
+          .some(
+            (previous) =>
+              match.position < previous.position + previous.text.length,
+          ),
+    );
+}
+
 export function normalizeTechList(list: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];

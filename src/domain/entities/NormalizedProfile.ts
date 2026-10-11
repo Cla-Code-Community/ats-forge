@@ -57,6 +57,21 @@ export interface NormalizedLanguage {
   level?: string;
 }
 
+export interface NormalizedEvidence {
+  skillId: string;
+  canonicalName: string;
+  source: DataSource;
+  evidenceType:
+    | 'professional_experience'
+    | 'project'
+    | 'profile_mention'
+    | 'education';
+  originalExcerpt: string;
+  position: number;
+  confidence: number;
+  occurrences: number;
+}
+
 export interface NormalizedProfile {
   name: string;
   /** Short professional title/headline, e.g. "Engenheiro de Software Backend". */
@@ -70,6 +85,7 @@ export interface NormalizedProfile {
   projects: NormalizedProject[];
   links: NormalizedLink[];
   languages: NormalizedLanguage[];
+  evidence?: NormalizedEvidence[];
 }
 
 /** The vacancy the resume is being tailored to (optional). */

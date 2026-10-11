@@ -64,6 +64,29 @@ Resposta: o arquivo binário/texto no corpo, com:
 O motor **nunca inventa** empresas, cargos, datas, tecnologias ou resultados: ele apenas
 organiza, resume e adapta palavras-chave a partir das evidências recebidas no perfil.
 
+#### Análise explicável e fontes de evidência
+
+O processamento é determinístico e local ao serviço: não usa IA generativa, embeddings,
+modelos de machine learning ou serviços externos de inferência. O catálogo de competências
+tem versão (`TECH_TAXONOMY_VERSION`) e aliases com limites de palavra; por exemplo,
+`NodeJS`, `Node.js` e `Node JS` são normalizados para `Node.js`, enquanto `TS` só é
+reconhecido como TypeScript quando o texto também indica contexto de linguagem.
+
+O relatório de análise também inclui `jobDetails`, os `requirements` classificados
+(`required`, `preferred`, `responsibility`, `education`, `certification`, `behavioral`
+ou `ambiguous`), evidências por requisito e `jobFitScore`. Requisitos ambíguos são
+marcados para revisão, em vez de entrarem silenciosamente como obrigatórios. O cálculo
+da aderência textual usa peso 3 para obrigatórios e 1 para desejáveis; evidências de
+experiência profissional valem 100%, de projeto 80% e menções de perfil 45%. Itens
+informativos e em revisão não entram nessa pontuação. `confidence` mede apenas a
+correspondência textual e não a probabilidade de domínio da competência.
+
+Tecnologias lidas de badges e trechos de código no README do GitHub são removidas
+antes da análise. Competências listadas no perfil permanecem identificadas como
+menções; READMEs e stacks de repositórios permanecem identificados como projetos —
+nunca são promovidos a experiência profissional. A falha ou ausência de README continua
+sendo tolerada.
+
 ---
 
 ## Recursos

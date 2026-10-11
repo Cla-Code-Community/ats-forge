@@ -11,7 +11,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mockFetchOnce(user: unknown, repos: unknown) {
+function mockFetchOnce(
+  user: unknown,
+  repos: unknown,
+  readme = 'Projeto em Node.js e TypeScript.',
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
@@ -20,7 +24,7 @@ function mockFetchOnce(user: unknown, repos: unknown) {
       if (/\/readme$/.test(u)) {
         // README endpoint (profile + repos). Return a small base64 README.
         body = {
-          content: Buffer.from('Projeto em Node.js e TypeScript.').toString('base64'),
+          content: Buffer.from(readme).toString('base64'),
           encoding: 'base64',
         };
       } else if (/\/repos\?/.test(u)) {
@@ -46,6 +50,8 @@ describe('parseGitHubUsername', () => {
   });
   it('retorna null para entrada inválida', () => {
     expect(parseGitHubUsername('not a user!!')).toBeNull();
+    expect(parseGitHubUsername('https://notgithub.com/ana')).toBeNull();
+    expect(parseGitHubUsername('https://github.com/ana/settings')).toBeNull();
     expect(parseGitHubUsername(undefined)).toBeNull();
   });
 });
@@ -131,8 +137,94 @@ describe('GitHubEnricher', () => {
       github: 'ghost-user',
     });
 
+    it('não converte badge de tecnologia em evidência de projeto', async () => {
+      mockFetchOnce(
+        {
+          login: 'ana',
+          html_url: 'https://github.com/ana',
+        },
+        [
+          {
+            name: 'portfolio',
+            description: 'Portfólio pessoal',
+            html_url: 'https://github.com/ana/portfolio',
+            language: null,
+            stargazers_count: 0,
+            forks_count: 0,
+            fork: false,
+            archived: false,
+            topics: [],
+          },
+        ],
+        [
+          '# Portfolio',
+          'API desenvolvida com Node.js.',
+          '[![Docker](https://img.shields.io/badge/Docker-blue)](https://docker.com)',
+        ].join('\n'),
+      );
+
+      const { profile } = await enricher.enrich(minimalProfile(), { github: 'ana' });
+      const project = profile.projects.find((item) => item.name === 'portfolio');
+
+      expect(project?.stack).toContain('Node.js');
+      expect(project?.stack).not.toContain('Docker');
+      expect(
+        profile.evidence?.some(
+          (item) => item.canonicalName === 'Node.js' && item.evidenceType === 'project',
+        ),
+      ).toBe(true);
+      expect(
+        profile.evidence?.some(
+          (item) => item.canonicalName === 'Docker' && item.evidenceType === 'project',
+        ),
+      ).toBe(false);
+    });
+
     expect(warnings.length).toBe(1);
     expect(profile.projects).toEqual([]);
+  });
+
+  it('continua usando dados públicos quando o README não existe', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        const value = String(url);
+        if (/\/readme$/.test(value)) {
+          return Promise.resolve({ ok: false, status: 404 } as Response);
+        }
+        const body = /\/repos\?/.test(value)
+          ? [
+              {
+                name: 'api',
+                description: 'API em Node.js',
+                html_url: 'https://github.com/ana/api',
+                language: 'TypeScript',
+                stargazers_count: 0,
+                forks_count: 0,
+                fork: false,
+                archived: false,
+                topics: [],
+              },
+            ]
+          : {
+              login: 'ana',
+              html_url: 'https://github.com/ana',
+            };
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(body),
+        } as Response);
+      }),
+    );
+
+    const { profile, warnings } = await enricher.enrich(minimalProfile(), {
+      github: 'ana',
+    });
+
+    expect(warnings).toEqual([]);
+    expect(profile.projects.map((project) => project.name)).toContain('api');
+    expect(profile.skills.map((skill) => skill.name)).toContain('TypeScript');
   });
 
   it('sem sources, retorna o perfil intacto', async () => {

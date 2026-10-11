@@ -1,6 +1,19 @@
-import { JobTarget, NormalizedProfile } from '../entities/NormalizedProfile';
+import type {
+  DataSource,
+  JobTarget,
+  NormalizedProfile,
+} from '../entities/NormalizedProfile';
 import { extractKeywordsFromText } from './KeywordExtractor';
-import { extractTechnologies, normalizeTechList } from './TechTaxonomy';
+import {
+  JobRequirementParser,
+  type ParsedJobDescription,
+  type ParsedJobRequirement,
+} from './JobRequirementParser';
+import {
+  extractTechnologies,
+  findTechnologyMentions,
+  normalizeTechList,
+} from './TechTaxonomy';
 
 /**
  * AtsAnalyzer v2 — scores a resume the way a real ATS + senior recruiter would,
@@ -14,6 +27,9 @@ export interface JobAnalysis {
   /** Technologies required by the job (canonical). */
   hardSkills: string[];
   seniority: string | null;
+  title: string | null;
+  description: string;
+  jobDetails: ParsedJobDescription;
 }
 
 export interface AtsScoreBreakdown {
@@ -35,6 +51,35 @@ export interface AtsReport {
   missingKeywords: string[];
   weakSections: string[];
   recommendations: string[];
+  jobFitScore: number | null;
+  jobFitExplanation: string;
+  requirements: AnalyzedJobRequirement[];
+  jobDetails: Pick<ParsedJobDescription, 'title' | 'company'>;
+}
+
+export interface RequirementEvidence {
+  skillId: string;
+  canonicalName: string;
+  source: DataSource;
+  evidenceType: 'professional_experience' | 'project' | 'profile_mention' | 'education';
+  originalExcerpt: string;
+  position: number;
+  confidence: number;
+  occurrences: number;
+}
+
+export interface AtsAnalyzerOptions {
+  requirementWeights?: Partial<
+    Record<'required' | 'preferred' | 'responsibility', number>
+  >;
+  evidenceWeights?: Partial<
+    Record<RequirementEvidence['evidenceType'], number>
+  >;
+}
+
+export interface AnalyzedJobRequirement extends ParsedJobRequirement {
+  evidence: RequirementEvidence[];
+  matchStrength: number;
 }
 
 const SENIORITY_TERMS: Array<[RegExp, string]> = [
@@ -55,6 +100,18 @@ const WEIGHTS: Record<keyof AtsScoreBreakdown, number> = {
 };
 
 const PASS_THRESHOLD = 80;
+const DEFAULT_REQUIREMENT_WEIGHTS = {
+  required: 3,
+  preferred: 1,
+  responsibility: 0.5,
+} as const;
+const DEFAULT_EVIDENCE_WEIGHTS: Record<RequirementEvidence['evidenceType'], number> = {
+  professional_experience: 1,
+  project: 0.8,
+  profile_mention: 0.45,
+  education: 0.75,
+};
+const REQUIREMENT_PARSER = new JobRequirementParser();
 
 const ACTION_VERBS = [
   'desenvolv', 'implement', 'cri', 'constru', 'projet', 'lider', 'arquitet',
@@ -64,10 +121,39 @@ const ACTION_VERBS = [
 ];
 
 export class AtsAnalyzer {
+  private readonly requirementWeights: Record<
+    'required' | 'preferred' | 'responsibility',
+    number
+  >;
+  private readonly evidenceWeights: Record<
+    RequirementEvidence['evidenceType'],
+    number
+  >;
+
+  constructor(options: AtsAnalyzerOptions = {}) {
+    this.requirementWeights = {
+      ...DEFAULT_REQUIREMENT_WEIGHTS,
+      ...options.requirementWeights,
+    };
+    this.evidenceWeights = {
+      ...DEFAULT_EVIDENCE_WEIGHTS,
+      ...options.evidenceWeights,
+    };
+    for (const weight of [
+      ...Object.values(this.requirementWeights),
+      ...Object.values(this.evidenceWeights),
+    ]) {
+      if (!Number.isFinite(weight) || weight < 0) {
+        throw new RangeError('Pesos de pontuação devem ser números finitos não negativos.');
+      }
+    }
+  }
+
   analyzeJob(job: JobTarget | null | undefined): JobAnalysis {
     const text = [job?.title ?? '', job?.description ?? ''].join('\n');
     const keywords = extractKeywordsFromText(text);
     const hardSkills = extractTechnologies(text);
+    const jobDetails = REQUIREMENT_PARSER.parse(job);
 
     let seniority: string | null = job?.seniority ?? null;
     if (!seniority) {
@@ -78,7 +164,14 @@ export class AtsAnalyzer {
         }
       }
     }
-    return { keywords, hardSkills, seniority };
+    return {
+      keywords,
+      hardSkills,
+      seniority,
+      title: job?.title?.trim() || null,
+      description: job?.description ?? '',
+      jobDetails,
+    };
   }
 
   score(profile: NormalizedProfile, analysis: JobAnalysis): AtsReport {
@@ -112,6 +205,40 @@ export class AtsAnalyzer {
 
     const weakSections = this.findWeakSections(profile, breakdown);
     const recommendations = this.buildRecommendations(profile, breakdown, missing);
+    const requirements = analyzeRequirements(
+      profile,
+      analysis.jobDetails.requirements,
+      this.evidenceWeights,
+    );
+    const scoredRequirements = requirements.flatMap((requirement) => {
+      const weight =
+        requirement.priority === 'required'
+          ? this.requirementWeights.required
+          : requirement.priority === 'preferred'
+            ? this.requirementWeights.preferred
+            : requirement.category === 'responsibility' &&
+                requirement.technologies.length > 0
+              ? this.requirementWeights.responsibility
+              : 0;
+      return weight > 0 ? [{ requirement, weight }] : [];
+    });
+    const totalRequirementWeight = scoredRequirements.reduce(
+      (sum, item) => sum + item.weight,
+      0,
+    );
+    const jobFitScore =
+      totalRequirementWeight > 0
+        ? Math.round(
+            (scoredRequirements.reduce(
+              (sum, item) =>
+                sum +
+                (item.requirement.matchStrength / 100) * item.weight,
+              0,
+            ) /
+              totalRequirementWeight) *
+              100,
+          )
+        : null;
 
     return {
       score,
@@ -121,6 +248,14 @@ export class AtsAnalyzer {
       missingKeywords: missing.slice(0, 20),
       weakSections,
       recommendations,
+      jobFitScore,
+      jobFitExplanation:
+        `Compatibilidade textual: obrigatório peso ${this.requirementWeights.required}, desejável peso ${this.requirementWeights.preferred}, tecnologia em responsabilidade peso ${this.requirementWeights.responsibility}; evidência de experiência ${this.evidenceWeights.professional_experience * 100}%, projeto ${this.evidenceWeights.project * 100}%, menção de perfil ${this.evidenceWeights.profile_mention * 100}%, formação ${this.evidenceWeights.education * 100}%. Ambiguidades ficam fora da pontuação e são sinalizadas para revisão. Não representa probabilidade de contratação nem domínio real.`,
+      requirements,
+      jobDetails: {
+        title: analysis.jobDetails.title,
+        company: analysis.jobDetails.company,
+      },
     };
   }
 
@@ -327,4 +462,226 @@ export class AtsAnalyzer {
   private clamp(n: number): number {
     return Math.max(0, Math.min(100, Math.round(n)));
   }
+}
+
+interface EvidenceSource {
+  source: DataSource;
+  evidenceType: RequirementEvidence['evidenceType'];
+  excerpt: string;
+  positionOffset?: number;
+}
+
+function analyzeRequirements(
+  profile: NormalizedProfile,
+  requirements: ParsedJobRequirement[],
+  evidenceWeights: Record<RequirementEvidence['evidenceType'], number>,
+): AnalyzedJobRequirement[] {
+  const sources: EvidenceSource[] = [
+    ...profile.experience.flatMap((experience) => {
+      const source = experience.source ?? 'candidate';
+      return [
+        ...(experience.stack ?? []).map((excerpt) => ({
+          source,
+          evidenceType: 'professional_experience' as const,
+          excerpt,
+        })),
+        ...(experience.highlights ?? []).map((excerpt) => ({
+          source,
+          evidenceType: 'professional_experience' as const,
+          excerpt,
+        })),
+        ...(experience.results ?? []).map((excerpt) => ({
+          source,
+          evidenceType: 'professional_experience' as const,
+          excerpt,
+        })),
+      ];
+    }),
+    ...profile.projects.flatMap((project) => {
+      const source = project.source ?? 'github';
+      return [
+        project.name,
+        project.description ?? '',
+        ...(project.stack ?? []),
+        ...(project.highlights ?? []),
+      ]
+        .filter(Boolean)
+        .map((excerpt) => ({
+          source,
+          evidenceType: 'project' as const,
+          excerpt,
+        }));
+    }),
+    ...profile.skills.map((skill) => ({
+      source: skill.source ?? 'candidate',
+      evidenceType: 'profile_mention' as const,
+      excerpt: skill.name,
+    })),
+    ...(profile.evidence ?? []).map((item) => {
+      const mentionPosition =
+        findTechnologyMentions(item.originalExcerpt, item.canonicalName)[0]?.position ?? 0;
+      return {
+        source: item.source,
+        evidenceType: item.evidenceType,
+        excerpt: item.originalExcerpt,
+        positionOffset: item.position - mentionPosition,
+      };
+    }),
+    ...[profile.headline, profile.summary]
+      .filter((text): text is string => Boolean(text?.trim()))
+      .map((excerpt) => ({
+        source: 'candidate' as const,
+        evidenceType: 'profile_mention' as const,
+        excerpt,
+      })),
+    ...profile.education.map((education) => ({
+      source: education.source ?? 'candidate',
+      evidenceType: 'education' as const,
+      excerpt: [education.institution, education.degree, education.field]
+        .filter(Boolean)
+        .join(' '),
+    })),
+  ];
+
+  return requirements.map((requirement) => {
+    const terms = requirement.technologies.length
+      ? requirement.technologies
+      : [requirement.text];
+    const termResults = terms.map((term) => {
+      const evidence = sources
+        .map((source) => createEvidence(source, term))
+        .filter((item): item is RequirementEvidence => item !== null);
+      const strength = evidence.reduce(
+        (strongest, item) =>
+          Math.max(
+            strongest,
+            evidenceWeights[item.evidenceType] * item.confidence * 100,
+          ),
+        0,
+      );
+      return { evidence, strength };
+    });
+    const evidence = termResults.flatMap((result) => result.evidence);
+    return {
+      ...requirement,
+      evidence,
+      matchStrength:
+        termResults.length > 0
+          ? Math.round(
+              termResults.reduce((sum, result) => sum + result.strength, 0) /
+                termResults.length,
+            )
+          : 0,
+    };
+  });
+}
+
+function createEvidence(source: EvidenceSource, term: string): RequirementEvidence | null {
+  const excerpt = source.excerpt;
+  const canonical = extractTechnologies(term)[0];
+  const foundTechnologies = extractTechnologies(excerpt);
+  let matchIndex = -1;
+  let confidence = 0;
+  let occurrences = 0;
+
+  if (canonical && foundTechnologies.includes(canonical)) {
+    const mentions = findTechnologyMentions(excerpt, canonical);
+    const firstMention = mentions[0];
+    if (firstMention) {
+      matchIndex = firstMention.position;
+      confidence =
+        firstMention.text.toLowerCase() === canonical.toLowerCase() ? 1 : 0.9;
+      occurrences = mentions.length;
+    }
+  } else if (!canonical) {
+    const requirementWords = comparisonWords(term);
+    const excerptWords = comparisonWords(excerpt);
+    const overlap = requirementWords.filter((word) => excerptWords.includes(word));
+    if (requirementWords.length > 0 && overlap.length === requirementWords.length) {
+      matchIndex = findFirstWordPosition(excerpt, overlap[0]);
+      confidence = 0.8;
+    } else if (
+      requirementWords.length >= 2 &&
+      overlap.length >= Math.ceil(requirementWords.length * 0.7)
+    ) {
+      matchIndex = findFirstWordPosition(excerpt, overlap[0]);
+      confidence = 0.65;
+    }
+  }
+
+  if (matchIndex < 0) return null;
+  const excerptStart = Math.max(0, matchIndex - 80);
+  const excerptEnd = Math.min(excerpt.length, matchIndex + term.length + 120);
+  const context = excerpt.slice(excerptStart, excerptEnd).trim();
+  const canonicalName = canonical ?? term.trim();
+  const skillId = canonicalName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  return {
+    skillId,
+    canonicalName,
+    source: source.source,
+    evidenceType: source.evidenceType,
+    originalExcerpt: context,
+    position: (source.positionOffset ?? 0) + matchIndex,
+    confidence,
+    occurrences: canonical ? occurrences : countOccurrences(excerpt, term),
+  };
+}
+
+function comparisonWords(text: string): string[] {
+  const nonSpecificTerms = new Set([
+    'com',
+    'em',
+    'para',
+    'de',
+    'da',
+    'do',
+    'the',
+    'and',
+    'for',
+    'with',
+    'degree',
+    'formacao',
+    'academica',
+    'superior',
+    'experiencia',
+    'conhecimento',
+    'conhecimentos',
+    'dominio',
+    'obrigatorio',
+    'obrigatoria',
+    'necessario',
+    'necessaria',
+    'desejavel',
+    'diferencial',
+    'curso',
+    'certificacao',
+    'certificado',
+  ]);
+  return (
+    text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .match(/[a-z0-9+#./-]{3,}/g) ?? []
+  ).filter((word) => !nonSpecificTerms.has(word));
+}
+
+function findFirstWordPosition(text: string, word: string): number {
+  const index = text.toLowerCase().indexOf(word.toLowerCase());
+  return index >= 0 ? index : 0;
+}
+
+function countOccurrences(text: string, term: string): number {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [
+    ...text.matchAll(
+      new RegExp(`(?<![a-z0-9+#])${escaped}(?![a-z0-9+#])`, 'gi'),
+    ),
+  ].length;
 }

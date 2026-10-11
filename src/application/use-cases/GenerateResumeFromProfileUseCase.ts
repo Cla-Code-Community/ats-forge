@@ -1,9 +1,11 @@
 import { NormalizedProfile } from '../../domain/entities/NormalizedProfile';
 import { AtsReport } from '../../domain/services/AtsAnalyzer';
+import { extractSkillEvidence } from '../../domain/services/EvidenceExtractor';
 import { mapProfileToRenderPayload } from '../../domain/services/ProfileMapper';
 import { ResumeOptimizer } from '../../domain/services/ResumeOptimizer';
 import { ResumeTailor } from '../../domain/services/ResumeTailor';
 import { SummaryWriter } from '../../domain/services/SummaryWriter';
+import { categoryOf } from '../../domain/services/TechTaxonomy';
 import { RenderPayload } from '../../domain/interfaces/IResumeRenderer';
 import { GitHubEnricher } from '../../infrastructure/enrichment/GitHubEnricher';
 import { createRenderer } from '../../infrastructure/renderers/RendererFactory';
@@ -38,7 +40,7 @@ export interface AnalyzeResult {
   atsReport: AtsReport;
   warnings: string[];
   sourcesUsed: string[];
-  job: { title: string | null; hasDescription: boolean };
+  job: { title: string | null; company: string | null; hasDescription: boolean };
 }
 
 interface PreparedResume {
@@ -70,10 +72,32 @@ export class GenerateResumeFromProfileUseCase {
     // When the candidate provides an "about" (e.g. their LinkedIn "Sobre"), write
     // a short, job-tailored summary from it. Otherwise keep what we have and let
     // the optimizer generate one from evidence.
+    const linkedinEvidence = input.about?.trim()
+      ? extractSkillEvidence(input.about, 'linkedin', 'profile_mention')
+      : [];
+    const knownSkills = new Set(profile.skills.map((skill) => skill.name.toLowerCase()));
+    const aboutSkills = linkedinEvidence.flatMap((item) => {
+      const key = item.canonicalName.toLowerCase();
+      if (knownSkills.has(key)) return [];
+      knownSkills.add(key);
+      return [{
+        name: item.canonicalName,
+        category: categoryOf(item.canonicalName) ?? 'Competências',
+        source: 'linkedin' as const,
+      }];
+    });
+    const profileWithAbout: NormalizedProfile = {
+      ...profile,
+      skills: [...profile.skills, ...aboutSkills],
+      evidence: [...(profile.evidence ?? []), ...linkedinEvidence],
+    };
     const withSummary =
       input.about && input.about.trim()
-        ? { ...profile, summary: this.summaryWriter.write(profile, input.job, input.about) }
-        : profile;
+        ? {
+            ...profileWithAbout,
+            summary: this.summaryWriter.write(profileWithAbout, input.job, input.about),
+          }
+        : profileWithAbout;
 
     const { profile: optimized, report: atsReport } = this.optimizer.optimize(
       withSummary,
@@ -125,7 +149,8 @@ export class GenerateResumeFromProfileUseCase {
       warnings,
       sourcesUsed,
       job: {
-        title: input.job?.title?.trim() || null,
+        title: atsReport.jobDetails.title,
+        company: atsReport.jobDetails.company,
         hasDescription: Boolean(input.job?.description?.trim()),
       },
     };

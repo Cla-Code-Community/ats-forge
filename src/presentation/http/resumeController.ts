@@ -86,6 +86,10 @@ export async function analyzeResumeHandler(req: Request, res: Response): Promise
     throw err;
   }
 
+  const startedAt = Date.now();
+  console.log(
+    `[ats-forge] analyze recebido: skills=${body.profile.skills.length} jobChars=${body.job?.description?.length ?? 0} aboutChars=${body.about?.length ?? 0} github=${body.sources?.github ?? '-'}`,
+  );
   const result = await useCase.analyze({
     profile: body.profile,
     job: body.job ?? null,
@@ -94,6 +98,9 @@ export async function analyzeResumeHandler(req: Request, res: Response): Promise
     format: body.format,
     filename: body.filename,
   });
+  console.log(
+    `[ats-forge] analyze concluído em ${Date.now() - startedAt}ms warnings=${result.warnings.length}`,
+  );
 
   res.status(200).json(result);
 }

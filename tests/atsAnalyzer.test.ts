@@ -38,6 +38,62 @@ describe('AtsAnalyzer v2', () => {
     expect(report.matchedKeywords).not.toContain('Kubernetes');
   });
 
+  it('explica a aderência por requisito e reduz o peso de uma menção em lista', () => {
+    const job = {
+      description: 'Requisitos obrigatórios:\n- Experiência com Node.js',
+    };
+    const listedOnly = {
+      ...minimalProfile(),
+      skills: [{ name: 'Node.js', source: 'github' as const }],
+    };
+    const workEvidence = {
+      ...listedOnly,
+      experience: [
+        {
+          company: 'Acme',
+          role: 'Desenvolvedora',
+          stack: ['Node.js'],
+          highlights: ['Implementei APIs com Node.js'],
+          source: 'candidate' as const,
+        },
+      ],
+    };
+
+    const listedReport = analyzer.score(listedOnly, analyzer.analyzeJob(job));
+    const workReport = analyzer.score(workEvidence, analyzer.analyzeJob(job));
+    const requirement = workReport.requirements.find((item) =>
+      item.technologies.includes('Node.js'),
+    );
+
+    expect(listedReport.jobFitScore).toBe(45);
+    expect(workReport.jobFitScore).toBe(100);
+    expect(requirement?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'candidate',
+          evidenceType: 'professional_experience',
+          canonicalName: 'Node.js',
+          confidence: 1,
+          originalExcerpt: expect.stringContaining('Node.js'),
+        }),
+      ]),
+    );
+    expect(workReport.jobFitExplanation).toContain('peso 3');
+  });
+
+  it('mantém requisitos sem classificação segura para revisão, fora do score', () => {
+    const report = analyzer.score(
+      fullProfile(),
+      analyzer.analyzeJob({ description: 'Node.js e Kubernetes' }),
+    );
+    const uncertain = report.requirements.find(
+      (requirement) => requirement.priority === 'review',
+    );
+
+    expect(uncertain?.reviewRequired).toBe(true);
+    expect(report.jobFitScore).toBeNull();
+  });
+
   it('junta vaga (java, node, mulesoft) com as techs do perfil (GitHub/LinkedIn)', () => {
     const profile = {
       ...fullProfile(),

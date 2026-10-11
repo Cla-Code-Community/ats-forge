@@ -1,11 +1,3 @@
-/**
- * Sanitizes free text for resume rendering: decodes common HTML entities,
- * strips emoji / pictographs / markdown badge noise and any character outside
- * the printable Latin-1 range the PDF/DOCX base fonts can render — while
- * preserving Portuguese accents (á, ã, ç, é, õ, …). This is what fixes the
- * garbled "Ø=Üh" emoji artifacts coming from GitHub READMEs/bios.
- */
-
 const HTML_ENTITIES: Record<string, string> = {
   '&nbsp;': ' ',
   '&amp;': '&',
@@ -31,11 +23,9 @@ function decodeEntities(text: string): string {
   });
   return out;
 }
-
-/** Normalize characters that commonly appear but aren't in the base fonts. */
 function normalizeTypography(text: string): string {
   return text
-    .replace(/[‘’‚‛]/g, "'") // smart single quotes
+    .replace(/[‘’‚‛]/g, "'") 
     .replace(/[“”„‟]/g, '"') // smart double quotes
     .replace(/[–—―]/g, '-') // en/em dashes -> hyphen
     .replace(/…/g, '...') // ellipsis
@@ -71,6 +61,36 @@ export function sanitizeText(input: string | null | undefined): string {
   const normalized = normalizeTypography(decoded);
   const cleaned = stripNonRenderable(normalized);
   return cleaned.replace(/[ \t]{2,}/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+}
+
+/**
+ * Removes README-only presentation noise before local text analysis. Visible
+ * prose and link labels remain, while badges, code, markup, URLs and HTML
+ * payloads cannot be mistaken for skills or project experience.
+ */
+export function stripGitHubReadmeMarkup(input: string | null | undefined): string {
+  if (!input) return '';
+  return input
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/~~~[\s\S]*?~~~/g, ' ')
+    .replace(/!\[[^\]]*\](?:\([^)]*\)|\[[^\]]*\])?/g, ' ')
+    .replace(/<img\b[^>]*>/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/^\s*\[[^\]]+\]:\s*\S+.*$/gm, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .split(/\r?\n/)
+    .filter((line) => !/(?:shields\.io|badgen\.net|img\.shields|badge)/i.test(line))
+    .join('\n')
+    .replace(/^\s{0,3}#{1,6}\s*/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/[*_~]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim();
 }
 
 /** Sanitizes and, if the text is empty afterwards, returns undefined. */

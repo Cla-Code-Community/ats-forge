@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { humanizeName, sanitizeText } from '../src/domain/services/TextSanitizer';
+import {
+  humanizeName,
+  sanitizeText,
+  stripGitHubReadmeMarkup,
+} from '../src/domain/services/TextSanitizer';
 
 describe('sanitizeText', () => {
   it('remove emoji e preserva o texto', () => {
@@ -23,6 +27,27 @@ describe('sanitizeText', () => {
   it('remove sequências ZWJ de emoji (ex.: 🧑‍💻)', () => {
     const out = sanitizeText('Dev 🧑‍💻 pleno');
     expect(out).toBe('Dev pleno');
+  });
+});
+
+describe('stripGitHubReadmeMarkup', () => {
+  it('preserva prosa e link labels, removendo badges, HTML, URLs e código', () => {
+    const readme = [
+      '# Sobre',
+      'Desenvolvo APIs com Node.js.',
+      '[![Node](https://img.shields.io/badge/Node.js-blue)](https://nodejs.org)',
+      '<img src="https://example.com/badge.svg" alt="Docker">',
+      'Projeto: [API pública](https://example.com/api)',
+      '```ts',
+      'const database = "PostgreSQL";',
+      '```',
+    ].join('\n');
+
+    const clean = stripGitHubReadmeMarkup(readme);
+
+    expect(clean).toContain('Desenvolvo APIs com Node.js.');
+    expect(clean).toContain('API pública');
+    expect(clean).not.toMatch(/shields\.io|example\.com|PostgreSQL|Docker|<img/i);
   });
 });
 
