@@ -8,7 +8,11 @@ import {
     TextRun,
 } from 'docx';
 import { EnrichedExperience } from '../../domain/entities/EnrichedExperience';
-import { IResumeRenderer, RenderPayload } from '../../domain/interfaces/IResumeRenderer';
+import {
+  IResumeRenderer,
+  RenderPayload,
+  RenderProject,
+} from '../../domain/interfaces/IResumeRenderer';
 
 // ── Typography constants (values in half-points) ─────────────────────────────
 const FONT = 'Arial';
@@ -114,6 +118,31 @@ function experienceBlock(experiencias: EnrichedExperience[]): Paragraph[] {
   return children;
 }
 
+function projectsBlock(projetos: RenderProject[]): Paragraph[] {
+  if (projetos.length === 0) return [];
+  const children: Paragraph[] = [sectionHeader('Projetos')];
+
+  projetos.forEach((proj, idx) => {
+    if (idx > 0) children.push(gap(120));
+
+    children.push(new Paragraph({
+      children: [tx(proj.name, { bold: true, size: SZ_CORPO })],
+      spacing: { before: 60, after: 20, ...SPACELINE },
+    }));
+
+    if (proj.stack) {
+      children.push(new Paragraph({
+        children: [tx(`Stack: ${proj.stack}`, { italics: true, size: SZ_DETALHE, color: '555555' })],
+        spacing: { after: 40, ...SPACELINE },
+      }));
+    }
+    if (proj.description) children.push(bulletItem(proj.description));
+    proj.highlights.forEach((h) => children.push(bulletItem(h)));
+  });
+
+  return children;
+}
+
 function educationBlock(formacao: string[]): Paragraph[] {
   return [sectionHeader('Formação Acadêmica'), ...formacao.map(bulletItem)];
 }
@@ -141,15 +170,16 @@ export class DocxResumeRenderer implements IResumeRenderer {
   readonly extension = '.docx';
 
   async render(payload: RenderPayload): Promise<Buffer> {
-    const { contact, title, profile, skills, experiencias } = payload;
+    const { contact, title, profile, skills, experiencias, projetos } = payload;
 
     const children = [
       ...contactBlock(contact, title),
-      ...summaryBlock(profile),
-      ...experienceBlock(experiencias),
-      ...educationBlock(contact.formacao),
+      ...(profile ? summaryBlock(profile) : []),
+      ...(experiencias.length > 0 ? experienceBlock(experiencias) : []),
+      ...projectsBlock(projetos),
       ...skillsBlock(skills),
-      ...languagesBlock(contact.idiomas),
+      ...(contact.formacao.length > 0 ? educationBlock(contact.formacao) : []),
+      ...(contact.idiomas.length > 0 ? languagesBlock(contact.idiomas) : []),
     ];
 
     const doc = new Document({

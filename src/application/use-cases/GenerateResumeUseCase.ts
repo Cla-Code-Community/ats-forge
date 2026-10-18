@@ -77,6 +77,7 @@ export class GenerateResumeUseCase {
         profile,
         skills,
         experiencias,
+        projetos: [],
         extraKeywords,
       };
 

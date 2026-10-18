@@ -3,9 +3,131 @@
 > **Template** — Gere currículos compatíveis com sistemas ATS nos formatos **DOCX** e **Markdown** a partir de um único arquivo JSON.
 > Desenvolvido com **TypeScript** e **Arquitetura Limpa (Clean Architecture)**.
 
+## Dois modos de uso
+
+O ATS Forge funciona de duas formas:
+
+1. **CLI** (template original) — gera currículos a partir de `resume.json` + `config/`.
+2. **Serviço HTTP (backend de currículos)** — recebe um **perfil normalizado** por HTTP
+   e devolve o currículo em **DOCX**, **PDF** ou **Markdown**, com um **ATS Score**. É
+   assim que a plataforma *Candidate* integra a geração de currículos.
+
+### Serviço HTTP
+
+```bash
+npm install
+npm run build
+
+# Sobe o serviço (porta padrão 8089; configurável via PORT/ATS_FORGE_PORT)
+npm start
+# ou, em desenvolvimento:
+npm run serve
+```
+
+Variáveis de ambiente:
+
+| Variável            | Descrição                                                              |
+| ------------------- | ---------------------------------------------------------------------- |
+| `PORT`              | Porta do serviço (padrão `8089`).                                      |
+| `ATS_FORGE_API_KEY` | Se definido, exige o header `x-api-key`. Vazio = autenticação off.     |
+
+#### `POST /resumes/generate`
+
+Corpo (JSON):
+
+```jsonc
+{
+  "profile": {
+    "name": "Ana Souza",
+    "headline": "Engenheira de Software Backend",
+    "summary": "...",                 // opcional; se ausente, é derivado das evidências
+    "contact": { "email": "...", "phone": "...", "website": "..." },
+    "experience": [ { "company": "...", "role": "...", "period": "...",
+                      "stack": ["..."], "highlights": ["..."], "results": ["..."] } ],
+    "education": [ { "institution": "...", "degree": "...", "field": "..." } ],
+    "skills":    [ { "name": "TypeScript", "years": 5, "category": "Linguagens" } ],
+    "projects":  [ { "name": "...", "description": "...", "stack": ["..."] } ],
+    "links":     [ { "type": "github", "url": "..." } ],
+    "languages": [ { "name": "Português", "level": "Nativo" } ]
+  },
+  "job":    { "title": "...", "description": "..." },   // opcional
+  "format": "pdf"                                       // "docx" | "pdf" | "md"
+}
+```
+
+Resposta: o arquivo binário/texto no corpo, com:
+
+* `Content-Disposition: attachment; filename="..."`
+* `X-Ats-Score: 0-100` — pontuação estimada de compatibilidade ATS.
+* `X-Ats-Report: <base64 JSON>` — relatório completo (breakdown, matched/missing keywords, sugestões).
+
+O motor **nunca inventa** empresas, cargos, datas, tecnologias ou resultados: ele apenas
+organiza, resume e adapta palavras-chave a partir das evidências recebidas no perfil.
+
+#### Análise explicável e fontes de evidência
+
+O processamento é determinístico e local ao serviço: não usa IA generativa, embeddings,
+modelos de machine learning ou serviços externos de inferência. O catálogo de competências
+tem versão (`TECH_TAXONOMY_VERSION`) e aliases com limites de palavra; por exemplo,
+`NodeJS`, `Node.js` e `Node JS` são normalizados para `Node.js`, enquanto `TS` só é
+reconhecido como TypeScript quando o texto também indica contexto de linguagem.
+
+O relatório de análise também inclui `jobDetails`, os `requirements` classificados
+(`required`, `preferred`, `responsibility`, `education`, `certification`, `behavioral`
+ou `ambiguous`), evidências por requisito e `jobFitScore`. Requisitos ambíguos são
+marcados para revisão, em vez de entrarem silenciosamente como obrigatórios. O cálculo
+da aderência textual usa peso 3 para obrigatórios e 1 para desejáveis; evidências de
+experiência profissional valem 100%, de projeto 80% e menções de perfil 45%. Itens
+informativos e em revisão não entram nessa pontuação. `confidence` mede apenas a
+correspondência textual e não a probabilidade de domínio da competência.
+
+Tecnologias lidas de badges e trechos de código no README do GitHub são removidas
+antes da análise. Competências listadas no perfil permanecem identificadas como
+menções; READMEs e stacks de repositórios permanecem identificados como projetos —
+nunca são promovidos a experiência profissional. A falha ou ausência de README continua
+sendo tolerada.
+
+#### Experiência profissional pelo README de perfil do GitHub
+
+O **README do perfil** (o repositório especial `usuario/usuario`, que aparece na página
+do perfil) é tratado como conteúdo autodeclarado do candidato. Se ele tiver uma seção de
+experiência profissional nesse padrão, o serviço a importa como experiência real
+(`source: "github"`), sem inventar nada. READMEs de repositórios comuns continuam sendo
+projetos.
+
+Padrão reconhecido (Markdown):
+
+```markdown
+## Experiência Profissional
+
+### Engenheiro de Software — Acme Corp (2022 - Atual)
+- Desenvolvi APIs REST em Node.js e TypeScript
+- Reduzi a latência em 30%
+
+### Desenvolvedor Júnior @ Empresa X (2020 - 2022)
+- Manutenção de serviços backend
+```
+
+Regras do padrão:
+
+- O título da seção deve conter uma palavra-chave de experiência: `Experiência`,
+  `Experiência Profissional`, `Histórico Profissional`, `Professional Experience`,
+  `Work Experience`, `Experience` ou `Carreira`.
+- Cada experiência é um subtítulo (`###`/`####`) **ou** uma linha em negrito (`**...**`).
+- O título de cada experiência precisa de um separador entre **cargo** e **empresa**:
+  `—`, `–`, `-`, `@`, `|` ou as palavras `at`/`em`/`na`/`no`. Formato: `Cargo <sep> Empresa`.
+- O período pode vir entre parênteses no título (`(2022 - Atual)`) ou em uma linha logo
+  abaixo. Aceita anos `AAAA` e `Atual`/`Presente`/`Present`/`Current`/`Hoje`.
+- Os bullets (`-`, `*`, `•`) abaixo do título viram as realizações da experiência.
+- Experiências já informadas pelo candidato têm prioridade; entradas do README que
+  coincidem em cargo+empresa não são duplicadas. Entradas sem o separador cargo/empresa
+  são ignoradas.
+
+---
+
 ## Recursos
 
-* Gera currículos nos formatos `.docx` e `.md` para diferentes objetivos profissionais.
+* Gera currículos nos formatos `.docx`, `.pdf` e `.md` para diferentes objetivos profissionais.
 * Extrai palavras-chave de uma descrição de vaga e as incorpora ao currículo.
 * Todos os seus dados pessoais ficam centralizados em um único arquivo `resume.json` (ignorado pelo Git — nunca é enviado ao repositório).
 * Toda a configuração dos perfis profissionais fica em arquivos JSON dentro da pasta `config/`, sem necessidade de alterar código TypeScript.
