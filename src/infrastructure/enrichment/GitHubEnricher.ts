@@ -1,26 +1,16 @@
 import {
-  NormalizedProfile,
-  NormalizedProject,
-  NormalizedSkill,
+    NormalizedProfile,
+    NormalizedProject,
+    NormalizedSkill,
 } from '../../domain/entities/NormalizedProfile';
-import {
-  categoryOf,
-  extractTechnologies,
-  normalizeTechList,
-} from '../../domain/services/TechTaxonomy';
 import { extractSkillEvidence } from '../../domain/services/EvidenceExtractor';
+import { parseReadmeExperiences } from '../../domain/services/GithubReadmeExperienceParser';
+import {
+    categoryOf,
+    extractTechnologies,
+    normalizeTechList,
+} from '../../domain/services/TechTaxonomy';
 import { stripGitHubReadmeMarkup } from '../../domain/services/TextSanitizer';
-
-/**
- * Enriches a normalized profile with PUBLIC GitHub data: the profile, the
- * profile README, the public repositories and the READMEs of the most relevant
- * ones. Technologies are extracted from languages, topics, descriptions and
- * README text, then normalized to canonical names.
- *
- * Only public, authorized data is used — no auth tokens, no scraping, no private
- * data. Everything merged is real (tagged `source: "github"`); nothing is
- * fabricated (spec §2/§3/§7/§24).
- */
 
 export interface EnrichmentSources {
   github?: string;
@@ -30,7 +20,6 @@ export interface EnrichmentSources {
 export interface EnrichmentResult {
   profile: NormalizedProfile;
   warnings: string[];
-  /** Which external sources actually contributed data (for UI transparency). */
   sourcesUsed: string[];
 }
 
@@ -63,11 +52,10 @@ interface GitHubReadme {
 }
 
 const API = 'https://api.github.com';
-const TIMEOUT_MS = 6000;
-// Orçamento total da importação; deve ficar abaixo do timeout do backend.
-const TOTAL_BUDGET_MS = 14000;
+const TIMEOUT_MS = 4000;
+const TOTAL_BUDGET_MS = 8000;
 const MAX_PROJECTS = 5;
-const MAX_README_FETCHES = 5;
+const MAX_README_FETCHES = 3;
 const MAX_SKILLS_FROM_GITHUB = 20;
 const MAX_GITHUB_JSON_BYTES = 1024 * 1024;
 const MAX_README_JSON_BYTES = 512 * 1024;
@@ -126,8 +114,6 @@ export class GitHubEnricher {
         .filter((r) => !r.fork && !r.archived)
         .sort(byRelevance)
         .slice(0, Math.max(MAX_PROJECTS, MAX_README_FETCHES));
-
-      // Read the profile README + the top repo READMEs (best-effort, in parallel).
       const [profileReadme, ...repoReadmes] = await Promise.all([
         this.fetchReadme(username, username),
         ...relevant
@@ -148,7 +134,6 @@ export class GitHubEnricher {
   ): NormalizedProfile {
     const cleanProfileReadme = stripGitHubReadmeMarkup(profileReadme);
     const cleanRepoReadmes = repoReadmes.map(stripGitHubReadmeMarkup);
-    // ── Technologies from every public signal ────────────────────────────────
     const techText = [
       user.bio ?? '',
       cleanProfileReadme,
@@ -171,8 +156,6 @@ export class GitHubEnricher {
         category: categoryOf(t) ?? 'Tecnologias (GitHub)',
         source: 'github' as const,
       }));
-
-    // ── Projects from the top repos, enriched with README-derived tech ───────
     const topProjects: NormalizedProject[] = repos
       .filter((r) => r.description || r.stargazers_count > 0 || r.topics?.length)
       .slice(0, MAX_PROJECTS)
@@ -193,13 +176,13 @@ export class GitHubEnricher {
         };
       });
 
-    // ── Summary / contact fallbacks (never override candidate-provided data) ──
-    // We intentionally do NOT use the raw profile README as the summary: READMEs
-    // are full of emoji, badges and markdown that produce garbled output. We use
-    // the short, clean bio as a fallback and let the optimizer craft a clean,
-    // evidence-based summary otherwise. (profileReadme is still used for tech
-    // extraction above.)
-    void profileReadme;
+    const existingCompanies = new Set(
+      profile.experience.map((e) => normalizeCompanyKey(e.company)),
+    );
+    const readmeExperiences = parseReadmeExperiences(profileReadme).filter(
+      (e) => !existingCompanies.has(normalizeCompanyKey(e.company)),
+    );
+
     const summary =
       profile.summary || (user.bio && user.bio.length <= 240 ? user.bio : undefined);
 
@@ -225,6 +208,7 @@ export class GitHubEnricher {
         location: profile.contact.location || user.location || undefined,
         website: profile.contact.website || normalizeUrl(user.blog) || undefined,
       },
+      experience: [...profile.experience, ...readmeExperiences],
       skills: [...profile.skills, ...githubSkills],
       projects: [...profile.projects, ...topProjects],
       evidence: [...(profile.evidence ?? []), ...githubEvidence],
@@ -248,7 +232,6 @@ export class GitHubEnricher {
     return readBoundedJson<T>(res, MAX_GITHUB_JSON_BYTES);
   }
 
-  /** Fetches and decodes a repo's README. Returns null if there is none. */
   private async fetchReadme(owner: string, repo: string): Promise<string | null> {
     try {
       const res = await fetch(`${API}/repos/${owner}/${repo}/readme`, {
@@ -265,8 +248,6 @@ export class GitHubEnricher {
     }
   }
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout;
@@ -351,6 +332,15 @@ async function readBoundedJson<T>(response: Response, maxBytes: number): Promise
   }
   json += decoder.decode();
   return JSON.parse(json) as T;
+}
+
+function normalizeCompanyKey(company: string): string {
+  return company
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 function normalizeLinkedIn(input: string | undefined): string | null {

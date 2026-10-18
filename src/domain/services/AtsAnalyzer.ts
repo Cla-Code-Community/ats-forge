@@ -10,6 +10,7 @@ import {
   type ParsedJobRequirement,
 } from './JobRequirementParser';
 import {
+  categoryOf,
   extractTechnologies,
   findTechnologyMentions,
   normalizeTechList,
@@ -240,9 +241,18 @@ export class AtsAnalyzer {
           )
         : null;
 
+    // §10: when the job defines required/preferred requirements, the structural/
+    // textual score must not silently mask a poor job match — it is capped by a
+    // ceiling derived from the job-fit score. Below that ceiling structure still
+    // counts, so atsScore and jobFit stay distinct but consistent.
+    const finalScore =
+      jobFitScore !== null
+        ? Math.min(score, this.clamp(50 + Math.round(jobFitScore * 0.5)))
+        : score;
+
     return {
-      score,
-      status: score >= PASS_THRESHOLD ? 'PASSED' : 'NEEDS_IMPROVEMENT',
+      score: finalScore,
+      status: finalScore >= PASS_THRESHOLD ? 'PASSED' : 'NEEDS_IMPROVEMENT',
       breakdown,
       matchedKeywords: matched,
       missingKeywords: missing.slice(0, 20),
@@ -250,7 +260,7 @@ export class AtsAnalyzer {
       recommendations,
       jobFitScore,
       jobFitExplanation:
-        `Compatibilidade textual: obrigatório peso ${this.requirementWeights.required}, desejável peso ${this.requirementWeights.preferred}, tecnologia em responsabilidade peso ${this.requirementWeights.responsibility}; evidência de experiência ${this.evidenceWeights.professional_experience * 100}%, projeto ${this.evidenceWeights.project * 100}%, menção de perfil ${this.evidenceWeights.profile_mention * 100}%, formação ${this.evidenceWeights.education * 100}%. Ambiguidades ficam fora da pontuação e são sinalizadas para revisão. Não representa probabilidade de contratação nem domínio real.`,
+        `Compatibilidade textual: obrigatório peso ${this.requirementWeights.required}, desejável peso ${this.requirementWeights.preferred}, tecnologia em responsabilidade peso ${this.requirementWeights.responsibility}; evidência de experiência ${this.evidenceWeights.professional_experience * 100}%, projeto ${this.evidenceWeights.project * 100}%, menção de perfil ${this.evidenceWeights.profile_mention * 100}%, formação ${this.evidenceWeights.education * 100}%. Ambiguidades ficam fora da pontuação e são sinalizadas para revisão. Quando a vaga define requisitos, o ATS Score fica limitado a um teto de (50 + aderência/2), para que a estrutura não mascare baixa correspondência. Não representa probabilidade de contratação nem domínio real.`,
       requirements,
       jobDetails: {
         title: analysis.jobDetails.title,
@@ -450,7 +460,7 @@ export class AtsAnalyzer {
     }
     if (b.keywords < 70 && missing.length > 0) {
       tips.push(
-        `Evidencie (quando for verdade) termos da vaga ausentes: ${missing.slice(0, 6).join(', ')}.`,
+        `Requisitos da vaga sem comprovação nos seus dados: ${missing.slice(0, 6).join(', ')}. Se você tiver essa experiência, adicione evidências concretas; caso contrário, não inclua tecnologias que você não domina.`,
       );
     }
     if (b.technicalSkills < 60) {
@@ -543,6 +553,18 @@ function analyzeRequirements(
     })),
   ];
 
+  const bestEvidenceFor = (term: string): RequirementEvidence | null => {
+    let best: { ev: RequirementEvidence; strength: number } | null = null;
+    for (const source of sources) {
+      const ev = createEvidence(source, term);
+      if (!ev) continue;
+      const strength = evidenceWeights[ev.evidenceType] * ev.confidence * 100;
+      if (!best || strength > best.strength) best = { ev, strength };
+    }
+    return best?.ev ?? null;
+  };
+  const fullStack = buildFullStackEvidence(profile, bestEvidenceFor);
+
   return requirements.map((requirement) => {
     const terms = requirement.technologies.length
       ? requirement.technologies
@@ -562,18 +584,78 @@ function analyzeRequirements(
       return { evidence, strength };
     });
     const evidence = termResults.flatMap((result) => result.evidence);
-    return {
-      ...requirement,
-      evidence,
-      matchStrength:
-        termResults.length > 0
-          ? Math.round(
-              termResults.reduce((sum, result) => sum + result.strength, 0) /
-                termResults.length,
-            )
-          : 0,
-    };
+    const matchStrength =
+      termResults.length > 0
+        ? Math.round(
+            termResults.reduce((sum, result) => sum + result.strength, 0) /
+              termResults.length,
+          )
+        : 0;
+
+    // Full-stack requirement: proven when the candidate has BOTH backend and
+    // frontend evidence — partial credit, flagged for review because the desired
+    // seniority is not confirmed by the data alone (spec §7A).
+    if (
+      requirement.technologies.length === 0 &&
+      isFullStackRequirement(requirement.text) &&
+      fullStack &&
+      matchStrength < FULL_STACK_STRENGTH
+    ) {
+      return {
+        ...requirement,
+        evidence: dedupeEvidence([...fullStack, ...evidence]),
+        matchStrength: FULL_STACK_STRENGTH,
+        reviewRequired: true,
+      };
+    }
+
+    return { ...requirement, evidence, matchStrength };
   });
+}
+
+const FULL_STACK_STRENGTH = 65;
+const BACKEND_LANGUAGES = new Set(['Java', 'Python', 'C#', 'Go', 'PHP', 'Ruby', 'Kotlin', 'Rust']);
+
+function isFullStackRequirement(text: string): boolean {
+  return /\bfull[\s-]?stack\b/i.test(text);
+}
+
+function isBackendTech(tech: string): boolean {
+  return categoryOf(tech) === 'Backend' || BACKEND_LANGUAGES.has(tech);
+}
+
+function collectProfileTechs(profile: NormalizedProfile): string[] {
+  return normalizeTechList([
+    ...profile.skills.map((s) => s.name),
+    ...profile.experience.flatMap((e) => e.stack ?? []),
+    ...profile.projects.flatMap((p) => p.stack ?? []),
+  ]);
+}
+
+function buildFullStackEvidence(
+  profile: NormalizedProfile,
+  bestEvidenceFor: (term: string) => RequirementEvidence | null,
+): RequirementEvidence[] | null {
+  const techs = collectProfileTechs(profile);
+  const backendTech = techs.find(isBackendTech);
+  const frontendTech = techs.find((t) => categoryOf(t) === 'Frontend');
+  if (!backendTech || !frontendTech) return null;
+  const backend = bestEvidenceFor(backendTech);
+  const frontend = bestEvidenceFor(frontendTech);
+  if (!backend || !frontend) return null;
+  return [backend, frontend];
+}
+
+function dedupeEvidence(items: RequirementEvidence[]): RequirementEvidence[] {
+  const seen = new Set<string>();
+  const out: RequirementEvidence[] = [];
+  for (const item of items) {
+    const key = `${item.source}:${item.canonicalName}:${item.originalExcerpt}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 function createEvidence(source: EvidenceSource, term: string): RequirementEvidence | null {

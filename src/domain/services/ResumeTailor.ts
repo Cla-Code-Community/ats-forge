@@ -40,12 +40,19 @@ export class ResumeTailor {
 
     const skills = stableSortDesc(profile.skills, (s) => score(s.name));
 
-    const experience = profile.experience.map((exp) => ({
-      ...exp,
-      highlights: exp.highlights
-        ? stableSortDesc(exp.highlights, (h) => score(`${h} ${(exp.stack ?? []).join(' ')}`))
-        : exp.highlights,
-    }));
+    // Preserve the author's bullet order for experiences they wrote themselves
+    // (manual/LinkedIn) — reordering breaks headers/narrative. Only engine-derived
+    // experiences have their bullets surfaced by relevance.
+    const experience = profile.experience.map((exp) =>
+      exp.source === 'manual' || exp.source === 'linkedin'
+        ? exp
+        : {
+            ...exp,
+            highlights: exp.highlights
+              ? stableSortDesc(exp.highlights, (h) => score(`${h} ${(exp.stack ?? []).join(' ')}`))
+              : exp.highlights,
+          },
+    );
 
     const projects = stableSortDesc(profile.projects, (p) =>
       score(

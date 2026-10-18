@@ -9,6 +9,7 @@ import { categoryOf } from '../../domain/services/TechTaxonomy';
 import { RenderPayload } from '../../domain/interfaces/IResumeRenderer';
 import { GitHubEnricher } from '../../infrastructure/enrichment/GitHubEnricher';
 import { createRenderer } from '../../infrastructure/renderers/RendererFactory';
+import { ResumeAIService } from '../ai/ResumeAIService';
 import { GenerateFromProfileInput } from '../dtos/GenerateFromProfileInput';
 
 export interface GenerateResumeResult {
@@ -61,6 +62,7 @@ export class GenerateResumeFromProfileUseCase {
     private readonly tailor: ResumeTailor = new ResumeTailor(),
     private readonly enricher: GitHubEnricher = new GitHubEnricher(),
     private readonly summaryWriter: SummaryWriter = new SummaryWriter(),
+    private readonly resumeAI: ResumeAIService | null = null,
   ) {}
 
   private async prepare(input: GenerateFromProfileInput): Promise<PreparedResume> {
@@ -99,12 +101,21 @@ export class GenerateResumeFromProfileUseCase {
           }
         : profileWithAbout;
 
+    const aiWarnings: string[] = [];
+    let enhanced = withSummary;
+    if (this.resumeAI) {
+      const ai = await this.resumeAI.enhance(withSummary, input.job, input.about);
+      enhanced = ai.profile;
+      aiWarnings.push(...ai.warnings);
+      if (ai.applied && !sourcesUsed.includes('ai')) sourcesUsed.push('ai');
+    }
+
     const { profile: optimized, report: atsReport } = this.optimizer.optimize(
-      withSummary,
+      enhanced,
       input.job,
     );
     const tailored = this.tailor.tailor(optimized, input.job);
-    return { profile: tailored, atsReport, warnings, sourcesUsed };
+    return { profile: tailored, atsReport, warnings: [...warnings, ...aiWarnings], sourcesUsed };
   }
 
   async execute(input: GenerateFromProfileInput): Promise<GenerateResumeResult> {

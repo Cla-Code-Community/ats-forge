@@ -137,7 +137,12 @@ describe('GitHubEnricher', () => {
       github: 'ghost-user',
     });
 
-    it('não converte badge de tecnologia em evidência de projeto', async () => {
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(profile.name).toBe(minimalProfile().name);
+    expect(profile.links.find((l) => l.type === 'github')).toBeUndefined();
+  });
+
+  it('não converte badge de tecnologia em evidência de projeto', async () => {
       mockFetchOnce(
         {
           login: 'ana',
@@ -179,10 +184,6 @@ describe('GitHubEnricher', () => {
         ),
       ).toBe(false);
     });
-
-    expect(warnings.length).toBe(1);
-    expect(profile.projects).toEqual([]);
-  });
 
   it('continua usando dados públicos quando o README não existe', async () => {
     vi.stubGlobal(

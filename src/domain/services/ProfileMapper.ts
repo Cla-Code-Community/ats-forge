@@ -31,7 +31,11 @@ export function mapProfileToRenderPayload(
       idiomas: profile.languages.map(formatLanguage).filter(Boolean),
     },
     focus: 'candidate',
-    title: sanitizeText(job?.title) || sanitizeText(profile.headline) || 'Profissional',
+    title:
+      sanitizeText(job?.title) ||
+      sanitizeText(profile.experience[0]?.role) ||
+      sanitizeText(profile.headline) ||
+      'Profissional',
     profile: buildSummary(profile),
     skills: buildSkills(profile),
     experiencias: buildExperiences(profile),

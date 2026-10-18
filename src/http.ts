@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createServer } from './presentation/http/createServer';
 
 const port = Number(process.env.PORT ?? process.env.ATS_FORGE_PORT ?? 8089);

@@ -20,7 +20,7 @@ export const TECH_TAXONOMY_VERSION = '1.1.0';
 const TECHS: TechDef[] = [
  
   { canonical: 'JavaScript', category: 'Linguagens', aliases: ['javascript', 'js'] },
-  { canonical: 'TypeScript', category: 'Linguagens', aliases: ['typescript'] },
+  { canonical: 'TypeScript', category: 'Linguagens', aliases: ['typescript', 'ts'] },
   { canonical: 'Java', category: 'Linguagens', aliases: ['java'] },
   { canonical: 'Python', category: 'Linguagens', aliases: ['python', 'py'] },
   { canonical: 'Go', category: 'Linguagens', aliases: ['golang', 'go'] },
@@ -125,8 +125,15 @@ for (const def of TECHS) {
 
 const SORTED_ALIASES = [...ALIAS_TO_CANONICAL.keys()].sort((a, b) => b.length - a.length);
 
+const PROSE_UNSAFE_ALIASES = new Set(['c', 'go', 'ts']);
+const BOUNDARY = '[a-z0-9+#_à-ÿ]';
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function aliasPattern(alias: string): RegExp {
+  return new RegExp(`(?<!${BOUNDARY})${escapeRegExp(alias)}(?!${BOUNDARY})`, 'gi');
 }
 export function normalizeTech(raw: string): string {
   const key = raw.trim().toLowerCase();
@@ -140,23 +147,20 @@ export function categoryOf(tech: string): TechCategory | undefined {
 export function extractTechnologies(text: string): string[] {
   if (!text) return [];
   let haystack = text.toLowerCase();
-  const seen = new Set<string>();
-  const found: string[] = [];
+  const firstPosition = new Map<string, number>();
 
   for (const alias of SORTED_ALIASES) {
+    if (PROSE_UNSAFE_ALIASES.has(alias)) continue;
     const canonical = ALIAS_TO_CANONICAL.get(alias)!;
-    const pattern = new RegExp(
-      `(?<![a-z0-9+#])${escapeRegExp(alias)}(?![a-z0-9+#])`,
-      'gi',
-    );
-    let matched = false;
-    haystack = haystack.replace(pattern, (m) => {
-      matched = true;
-      return ' '.repeat(m.length); 
+    const pattern = aliasPattern(alias);
+    let matchIndex = -1;
+    haystack = haystack.replace(pattern, (m: string, offset: number) => {
+      if (matchIndex < 0) matchIndex = offset;
+      return ' '.repeat(m.length);
     });
-    if (matched && !seen.has(canonical)) {
-      seen.add(canonical);
-      found.push(canonical);
+    if (matchIndex >= 0) {
+      const previous = firstPosition.get(canonical);
+      if (previous === undefined || matchIndex < previous) firstPosition.set(canonical, matchIndex);
     }
   }
   if (
@@ -164,12 +168,15 @@ export function extractTechnologies(text: string): string[] {
     /\b(typescript|javascript|programming language|linguagem(?:s)?|stack|desenvolvimento)\b/i.test(
       text,
     ) &&
-    !seen.has('TypeScript')
+    !firstPosition.has('TypeScript')
   ) {
-    found.push('TypeScript');
+    const tsIndex = text.toLowerCase().search(/\bts\b/i);
+    firstPosition.set('TypeScript', tsIndex >= 0 ? tsIndex : Number.MAX_SAFE_INTEGER);
   }
 
-  return found;
+  return [...firstPosition.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .map(([canonical]) => canonical);
 }
 
 export function findTechnologyMentions(
@@ -177,13 +184,11 @@ export function findTechnologyMentions(
   canonicalName: string,
 ): Array<{ text: string; position: number }> {
   const aliases = SORTED_ALIASES.filter(
-    (alias) => ALIAS_TO_CANONICAL.get(alias) === canonicalName,
+    (alias) =>
+      ALIAS_TO_CANONICAL.get(alias) === canonicalName && !PROSE_UNSAFE_ALIASES.has(alias),
   );
   const matches = aliases.flatMap((alias) => {
-    const pattern = new RegExp(
-      `(?<![a-z0-9+#])${escapeRegExp(alias)}(?![a-z0-9+#])`,
-      'gi',
-    );
+    const pattern = aliasPattern(alias);
     return [...text.matchAll(pattern)].flatMap((match) =>
       match.index === undefined
         ? []

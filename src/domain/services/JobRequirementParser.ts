@@ -36,15 +36,15 @@ type Section =
 const SECTION_HEADINGS: Array<{ section: Exclude<Section, null>; pattern: RegExp }> = [
   {
     section: 'required',
-    pattern: /^(requisitos?(?: obrigatorios?| necessarios?)?|qualificacoes?(?: minimas?)?|o que esperamos(?: de voce)?|o que voce precisa|conhecimentos obrigatorios?|(?:e )?essencial(?: ter)?|must have|requirements?)$/,
+    pattern: /^(requisitos?(?: obrigatorios?| necessarios?| e qualificacoes?| tecnicos?)?|qualificacoes?(?: minimas?)?|o que esperamos(?: de voce)?|o que voce precisa|conhecimentos obrigatorios?|(?:e )?essencial(?: ter)?|must have|requirements?)$/,
   },
   {
     section: 'preferred',
-    pattern: /^(requisitos? desejaveis?|(?:e )?desejaveis?|diferenciais?|sera um diferencial|nice to have|preferred qualifications?)$/,
+    pattern: /^(requisitos? desejaveis?|(?:e )?desejaveis?|diferenci(?:al|ais)|sera um diferencial|nice to have|preferred qualifications?)$/,
   },
   {
     section: 'responsibility',
-    pattern: /^(responsabilidades?|atividades(?: do cargo)?|seu dia a dia|o que voce vai fazer|what you.ll do|responsibilities?)$/,
+    pattern: /^(responsabilidades?(?: e atribuicoes?)?|atividades(?: do cargo)?|seu dia a dia|o que voce vai fazer|what you.ll do|responsibilities?)$/,
   },
   {
     section: 'education',
@@ -56,13 +56,13 @@ const SECTION_HEADINGS: Array<{ section: Exclude<Section, null>; pattern: RegExp
   },
   {
     section: 'ignored',
-    pattern: /^(beneficios?|o que oferecemos|sobre a empresa|quem somos|about us|our benefits|cultura(?: e valores)?|diversidade e inclusao)$/,
+    pattern: /^(beneficios?|o que oferecemos|sobre (?:a empresa|nos)|quem somos|about us|our benefits|cultura(?: e valores)?|valores|nossos valores|nosso jeito de ser|informacoes adicionais|diversidade(?: e inclusao)?|trabalhe (?:conosco|na .+|no .+)|venha ser .+)$/,
   },
 ];
 
 const REQUIREMENT_INTENT =
   /\b(requisitos?|necess[aá]rio|necess[aá]ria|obrigat[oó]rio|obrigat[oó]ria|essencial|esperamos|buscamos|procuramos|desej[aá]vel|diferencial|experi[eê]ncia com|conhecimento(?:s)? em|dom[ií]nio de|must have|nice to have|should have)\b/i;
-const EDUCATION_TERMS = /\b(formado|gradua[cç][aã]o|bacharelado|licenciatura|ensino superior|p[oó]s-gradua[cç][aã]o|mestrado|doutorado|degree|bachelor|master)\b/i;
+const EDUCATION_TERMS = /\b(formad[oa]|forma[cç][aã]o|gradua[cç][aã]o|graduad[oa]|bacharelado|licenciatura|ensino superior|superior (?:completo|em)|tecn[oó]logo|p[oó]s-gradua[cç][aã]o|mestrado|doutorado|degree|bachelor|master)\b/i;
 const CERTIFICATION_TERMS = /\b(certifica[cç][aã]o|certificado|certification|certified)\b/i;
 const BEHAVIORAL_TERMS =
   /\b(comunica[cç][aã]o|trabalho em equipe|colabora[cç][aã]o|lideran[cç]a|proatividade|organiza[cç][aã]o|adaptabilidade|resolu[cç][aã]o de problemas|soft skills|communication|teamwork|leadership)\b/i;
@@ -115,7 +115,11 @@ function classify(
   if (section === 'ignored') return null;
   if (section === 'education' || EDUCATION_TERMS.test(text)) return 'education';
   if (section === 'certification' || CERTIFICATION_TERMS.test(text)) return 'certification';
-  if (BEHAVIORAL_TERMS.test(text)) return 'behavioral';
+  const requirementSection =
+    section === 'required' || section === 'preferred' || section === 'responsibility';
+  if (BEHAVIORAL_TERMS.test(text) && (requirementSection || REQUIREMENT_INTENT.test(text))) {
+    return 'behavioral';
+  }
   if (section === 'required') return 'required';
   if (section === 'preferred') return 'preferred';
   if (section === 'responsibility') return 'responsibility';
@@ -173,6 +177,14 @@ function inferTitle(job: JobTarget | null | undefined, lines: string[]): string 
     if (line.length < 3 || line.length > 100 || headingSection(line)) continue;
     const explicit = /^(?:vaga|cargo|t[ií]tulo|position|job title)\s*[:\-]\s*(.+)$/i.exec(line);
     const candidate = explicit?.[1]?.trim() ?? line;
+    if (
+      !explicit &&
+      /\b(com|em|utilizando|usando|experi[eê]ncia|conhecimentos?|respons[aá]vel|desenvolver|implementar|manter)\b/i.test(
+        candidate,
+      )
+    ) {
+      continue;
+    }
     if (rolePattern.test(candidate)) return candidate;
   }
   return null;
@@ -211,6 +223,10 @@ export class JobRequirementParser {
         if (rowSection && cellIndex === 0) continue;
         if (!text || text.length > 500) continue;
         const technologies = extractTechnologies(text);
+        // Linhas de introdução ("Domínio de pelo menos uma das seguintes stacks:")
+        // terminam em ":" e não têm tecnologia: são cabeçalhos dos itens seguintes,
+        // não requisitos pontuáveis.
+        if (/:\s*$/.test(text) && technologies.length === 0) continue;
         const effectiveSection = rowSection ?? section;
         const category = classify(text, effectiveSection, technologies);
         if (!category) continue;

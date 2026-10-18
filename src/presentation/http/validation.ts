@@ -93,3 +93,54 @@ export const generateResumeSchema = z.object({
 });
 
 export type GenerateResumeBody = z.infer<typeof generateResumeSchema>;
+
+// ── Render pre-built content (no AI / no enrichment) ─────────────────────────────
+const enrichedExperienceSchema = z.object({
+  empresa: z.string().max(200).default(''),
+  cargo: z.string().max(200).default(''),
+  periodo: z.string().max(100).default(''),
+  stack: z.string().max(600).default(''),
+  atividades: z.array(z.string().max(1000)).max(40).default([]),
+  resultados: z.array(z.string().max(1000)).max(40).default([]),
+});
+
+const renderProjectSchema = z.object({
+  name: z.string().max(200).default(''),
+  stack: z.string().max(600).default(''),
+  description: z.string().max(2000).default(''),
+  highlights: z.array(z.string().max(1000)).max(40).default([]),
+  url: z.string().max(500).optional(),
+});
+
+const resumePreviewSchema = z.object({
+  name: z.string().min(1).max(200),
+  title: z.string().max(200).default(''),
+  summary: z.string().max(4000).default(''),
+  contact: z
+    .object({
+      email: z.string().max(200).default(''),
+      phone: z.string().max(40).default(''),
+      portfolio: z.string().max(300).default(''),
+    })
+    .default({ email: '', phone: '', portfolio: '' }),
+  links: z
+    .object({
+      linkedin: z.string().max(500).default(''),
+      github: z.string().max(500).default(''),
+    })
+    .default({ linkedin: '', github: '' }),
+  skills: z.record(z.array(z.string().max(80)).max(80)).default({}),
+  experience: z.array(enrichedExperienceSchema).max(60).default([]),
+  projects: z.array(renderProjectSchema).max(60).default([]),
+  education: z.array(z.string().max(300)).max(40).default([]),
+  languages: z.array(z.string().max(80)).max(20).default([]),
+});
+
+export const renderResumeSchema = z.object({
+  resume: resumePreviewSchema,
+  format: z.enum(['docx', 'pdf', 'md']).default('pdf'),
+  filename: z.string().max(120).optional(),
+  atsScore: z.number().min(0).max(100).nullish(),
+});
+
+export type RenderResumeBody = z.infer<typeof renderResumeSchema>;

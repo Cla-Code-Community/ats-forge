@@ -49,6 +49,28 @@ describe('SummaryWriter', () => {
     expect(summary).not.toContain('&nbsp;');
   });
 
+  it('lidera com o "Sobre" forte do candidato + targeting à vaga, sem cortar no meio', () => {
+    const about =
+      'Engenheiro de Software com atuação full stack, especializado em backend e integrações corporativas de alta escala. Minha missão é construir sistemas confiáveis e observáveis.';
+    const summary = writer.write(
+      profile(),
+      { title: 'Desenvolvedor FullStack Pleno', description: 'Java, Spring Boot, MuleSoft e REST API' },
+      about,
+    );
+    expect(summary).toContain('Engenheiro de Software com atuação full stack');
+    expect(summary).toContain('Direcionado à vaga de Desenvolvedor FullStack Pleno');
+    expect(summary).toMatch(/Java|MuleSoft/);
+    expect(summary).not.toMatch(/\.\.\.$/);
+    expect(summary).not.toMatch(/Júnior/i);
+  });
+
+  it('usa o cargo-alvo da vaga quando o headline é só senioridade', () => {
+    const base = { ...profile(), headline: 'Pleno' };
+    const summary = writer.write(base, { title: 'Desenvolvedor FullStack Pleno', description: 'Java, Node.js' }, 'Sou dev.');
+    expect(summary.startsWith('Desenvolvedor FullStack Pleno')).toBe(true);
+    expect(summary).not.toMatch(/^Pleno com/);
+  });
+
   it('funciona sem about (usa papel + techs relevantes)', () => {
     const summary = writer.write(profile(), job, null);
     expect(summary).toContain('Engenheiro de Software Backend');

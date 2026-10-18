@@ -61,7 +61,7 @@ describe('HTTP /resumes/generate', () => {
     expect(res.body.resume.skills).toBeTypeOf('object');
     expect(res.body.atsReport.score).toBeGreaterThanOrEqual(0);
     expect(res.body.sourcesUsed).toContain('candidate');
-    expect(res.body.job).toEqual({ title: 'Backend', hasDescription: true });
+    expect(res.body.job).toEqual({ title: 'Backend', company: null, hasDescription: true });
   });
 
   it('POST /resumes/analyze valida o corpo (400)', async () => {
@@ -70,6 +70,39 @@ describe('HTTP /resumes/generate', () => {
       .post('/resumes/analyze')
       .send({ profile: { contact: {} } })
       .expect(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST /resumes/render gera o arquivo a partir do preview (sem IA)', async () => {
+    const app = createServer();
+    const res = await request(app)
+      .post('/resumes/render')
+      .send({
+        resume: {
+          name: 'Bene Tesla',
+          title: 'Desenvolvedor FullStack Pleno',
+          summary: 'Resumo',
+          contact: { email: 'b@x.com', phone: '', portfolio: '' },
+          links: { linkedin: '', github: '' },
+          skills: { Backend: ['Node.js'] },
+          experience: [],
+          projects: [],
+          education: [],
+          languages: [],
+        },
+        format: 'md',
+        atsScore: 70,
+      })
+      .expect(200);
+
+    expect(res.headers['content-disposition']).toContain('attachment');
+    expect(res.headers['content-disposition']).toContain('Bene_Tesla');
+    expect(res.headers['x-ats-score']).toBe('70');
+  });
+
+  it('POST /resumes/render valida o corpo (400)', async () => {
+    const app = createServer();
+    const res = await request(app).post('/resumes/render').send({ resume: {} }).expect(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 

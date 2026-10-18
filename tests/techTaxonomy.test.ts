@@ -12,7 +12,7 @@ describe('TechTaxonomy', () => {
   it('normaliza aliases para o nome canônico', () => {
     expect(normalizeTech('nodejs')).toBe('Node.js');
     expect(normalizeTech('Node JS')).toBe('Node.js');
-    expect(normalizeTech('ts')).toBe('ts');
+    expect(normalizeTech('ts')).toBe('TypeScript');
     expect(normalizeTech('postgres')).toBe('PostgreSQL');
     expect(normalizeTech('k8s')).toBe('Kubernetes');
   });

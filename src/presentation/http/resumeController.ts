@@ -1,9 +1,18 @@
 import { Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { GenerateResumeFromProfileUseCase } from '../../application/use-cases/GenerateResumeFromProfileUseCase';
-import { generateResumeSchema } from './validation';
+import { RenderPayload } from '../../domain/interfaces/IResumeRenderer';
+import { createResumeAIService } from '../../infrastructure/ai/createResumeAIService';
+import { createRenderer } from '../../infrastructure/renderers/RendererFactory';
+import { generateResumeSchema, renderResumeSchema } from './validation';
 
-const useCase = new GenerateResumeFromProfileUseCase();
+const useCase = new GenerateResumeFromProfileUseCase(
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  createResumeAIService(),
+);
 
 /**
  * POST /resumes/generate
@@ -103,4 +112,71 @@ export async function analyzeResumeHandler(req: Request, res: Response): Promise
   );
 
   res.status(200).json(result);
+}
+
+/**
+ * POST /resumes/render
+ *
+ * Renders an ALREADY-BUILT resume (the preview content produced by /analyze) to a
+ * file. No AI, no enrichment, no scoring — just formatting. This is what the
+ * download uses, so it is fast and deterministic (it saves exactly what the user
+ * previewed).
+ */
+export async function renderResumeHandler(req: Request, res: Response): Promise<void> {
+  let body;
+  try {
+    body = renderResumeSchema.parse(req.body);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Conteúdo de currículo inválido.',
+        details: err.flatten().fieldErrors,
+      });
+      return;
+    }
+    throw err;
+  }
+
+  const { resume } = body;
+  const payload: RenderPayload = {
+    contact: {
+      nome: resume.name,
+      email: resume.contact.email,
+      telefone: resume.contact.phone,
+      portfolio: resume.contact.portfolio,
+      linkedin: resume.links.linkedin,
+      github: resume.links.github,
+      formacao: resume.education,
+      idiomas: resume.languages,
+    },
+    focus: '',
+    title: resume.title,
+    profile: resume.summary,
+    skills: resume.skills,
+    experiencias: resume.experience,
+    projetos: resume.projects,
+    extraKeywords: [],
+  };
+
+  const { renderer, contentType, extension } = createRenderer(body.format);
+  const content = await renderer.render(payload);
+  const baseName = sanitizeFilename(body.filename ?? resume.name ?? 'curriculo');
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${baseName}${extension}"`);
+  if (body.atsScore !== null && body.atsScore !== undefined) {
+    res.setHeader('X-Ats-Score', String(body.atsScore));
+  }
+  res.setHeader('Access-Control-Expose-Headers', 'X-Ats-Score, Content-Disposition');
+  res.status(200).send(Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8'));
+}
+
+function sanitizeFilename(name: string): string {
+  const cleaned = name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return cleaned || 'curriculo';
 }

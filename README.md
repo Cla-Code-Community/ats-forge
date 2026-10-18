@@ -87,6 +87,42 @@ menções; READMEs e stacks de repositórios permanecem identificados como proje
 nunca são promovidos a experiência profissional. A falha ou ausência de README continua
 sendo tolerada.
 
+#### Experiência profissional pelo README de perfil do GitHub
+
+O **README do perfil** (o repositório especial `usuario/usuario`, que aparece na página
+do perfil) é tratado como conteúdo autodeclarado do candidato. Se ele tiver uma seção de
+experiência profissional nesse padrão, o serviço a importa como experiência real
+(`source: "github"`), sem inventar nada. READMEs de repositórios comuns continuam sendo
+projetos.
+
+Padrão reconhecido (Markdown):
+
+```markdown
+## Experiência Profissional
+
+### Engenheiro de Software — Acme Corp (2022 - Atual)
+- Desenvolvi APIs REST em Node.js e TypeScript
+- Reduzi a latência em 30%
+
+### Desenvolvedor Júnior @ Empresa X (2020 - 2022)
+- Manutenção de serviços backend
+```
+
+Regras do padrão:
+
+- O título da seção deve conter uma palavra-chave de experiência: `Experiência`,
+  `Experiência Profissional`, `Histórico Profissional`, `Professional Experience`,
+  `Work Experience`, `Experience` ou `Carreira`.
+- Cada experiência é um subtítulo (`###`/`####`) **ou** uma linha em negrito (`**...**`).
+- O título de cada experiência precisa de um separador entre **cargo** e **empresa**:
+  `—`, `–`, `-`, `@`, `|` ou as palavras `at`/`em`/`na`/`no`. Formato: `Cargo <sep> Empresa`.
+- O período pode vir entre parênteses no título (`(2022 - Atual)`) ou em uma linha logo
+  abaixo. Aceita anos `AAAA` e `Atual`/`Presente`/`Present`/`Current`/`Hoje`.
+- Os bullets (`-`, `*`, `•`) abaixo do título viram as realizações da experiência.
+- Experiências já informadas pelo candidato têm prioridade; entradas do README que
+  coincidem em cargo+empresa não são duplicadas. Entradas sem o separador cargo/empresa
+  são ignoradas.
+
 ---
 
 ## Recursos
